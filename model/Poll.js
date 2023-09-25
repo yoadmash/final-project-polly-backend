@@ -1,10 +1,8 @@
 import mongoose, { Schema } from "mongoose";
-import { v4 as uuid } from 'uuid';
 
 const pollSchema = new Schema({
     _id: {
-        type: String,
-        default: uuid()
+        type: String
     },
     ownerId: {
         type: String,
@@ -15,7 +13,11 @@ const pollSchema = new Schema({
         required: true
     },
     creation_date: {
-        type: Date,
+        type: String,
+        required: true
+    },
+    creation_time: {
+        type: String,
         required: true
     },
     questions: {
@@ -30,6 +32,6 @@ const pollSchema = new Schema({
         type: [],
         required: true
     }
-});
+}, {versionKey: false});
 
 export const Poll = mongoose.model('Poll', pollSchema); 

@@ -1,102 +1,142 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import { v4 as uuid } from 'uuid';
 import { User } from '../model/User.js';
+import { format } from 'date-fns';
+import { log } from '../utils/log.js';
 
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 
 const handleRegister = async (req, res) => {
     const { username, password, email, firstname, lastname } = req.body;
-    if (!username || !password) return res.status(400).json({ message: 'missing username or password' });
-    if (!firstname || !lastname) return res.status(400).json({ message: 'missing firstname or lastname' });
-    if (!email) return res.status(400).json({ message: 'missing email' });
+    if (!username || !password) return res.status(400).json({ message: 'Missing username or password' });
+    if (!firstname || !lastname) return res.status(400).json({ message: 'Missing firstname or lastname' });
+    if (!email) return res.status(400).json({ message: 'Missing email' });
 
-    const duplicate = await User.findOne({ $or: [{ username: username }, { email: email }] });
-    if (duplicate) return res.status(409).json({ message: `a user using this username: \'${username}\' or this email: \'${email}\' already exists` });
+    const duplicate = await User.findOne({ $or: [{ username: username }, { email: email }] }).select('+password');
+    if (duplicate) {
+        if (!duplicate.active) {
+            bcrypt.compare(password, duplicate.password, async (err, same) => {
+                if (same) {
+                    try {
+                        duplicate.active = true;
+                        await duplicate.save();
+                        res.status(200).json({ message: 'user activated' });
+                        log(`${duplicate.username} (id: ${duplicate.id}) has been activated`, 'usersLog');
+                    } catch {
+                        res.status(500).send(err);
+                    }
+                } else return res.status(401).json({ message: "Username or password are incorrect" });
+            });
+        } else {
+            return res.status(409).json({ message: `A user using this username: \'${username}\' or this email: \'${email}\' already exists` });
+        }
+    } else {
+        try {
+            const hashedPassword = await bcrypt.hash(password, 10);
 
-    try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        await User.create({
-            firstname: firstname,
-            lastname: lastname,
-            username: username,
-            password: hashedPassword,
-            email: email
-        });
-        res.status(201).json({ message: `register complete` });
-    } catch (err) {
-        res.status(500).json({ message: err.errors });
+            const newUser = await User.create({
+                _id: uuid(),
+                firstname: firstname,
+                lastname: lastname,
+                username: username,
+                password: hashedPassword,
+                email: email,
+                registered_at: format(Date.now(), 'dd/MM/yyyy')
+            });
+            res.status(201).json({ message: `Registration Complete` });
+            log(`${newUser.username} (id: ${newUser.id}) has been registered`, 'authLog');
+        } catch (err) {
+            res.status(500).json({ message: err.errors });
+        }
     }
 }
 
 const handleLogin = async (req, res) => {
     const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ message: 'missing username or password' });
+    if (!username || !password) return res.status(401).json({ message: 'Missing username or password' });
 
-    const userExists = await User.findOne({ username: username }).select('+password');
-    if (!userExists) return res.status(404).json({ message: `${username} doesn't exist` });
+    const foundUser = await User.findOne({ username: username }).select('+password');
+    if (!foundUser) return res.status(401).json({ message: 'Username or password are incorrect' });
+    if (!foundUser.active) return res.status(401).json({ message: `User '${foundUser.username}' is deactivated. To activate the user, please Sign Up with the same username and password` });
 
-    bcrypt.compare(password, userExists.password, async (err, same) => {
+    bcrypt.compare(password, foundUser.password, async (err, same) => {
         if (same) {
             try {
                 const accessToken = jwt.sign(
-                    { "username": userExists.username },
+                    { "id": foundUser.id },
                     process.env.ACCESS_TOKEN_SECRET,
                     { expiresIn: '30m' }
                 );
                 const refreshToken = jwt.sign(
-                    { "username": userExists.username },
+                    { "id": foundUser.id },
                     process.env.REFRESH_TOKEN_SECRET,
-                    { expiresIn: '30d' }
+                    { expiresIn: '7d' }
                 );
-                userExists.refreshToken = refreshToken;
-                await userExists.save();
+                foundUser.refreshToken = refreshToken;
+                await foundUser.save();
                 res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }); //secure: true, sameSite: 'None'
-                res.json({ message: `login complete`, accessToken: accessToken });
+                const fullname = `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
+                res.json({
+                    message: `Login Complete`, userData: {
+                        userId: foundUser.id,
+                        fullname: fullname,
+                        accessToken: accessToken,
+                        profile_pic_path: foundUser.profile_pic_path
+                    }
+                });
+                log(`${foundUser.username} (id: ${foundUser.id}) has been logged in`, 'authLog');
             } catch {
-                res.status(500).text(err);
+                res.status(500).send(err);
             }
-        } else return res.status(401).json({ message: "wrong password" });
+        } else return res.status(401).json({ message: "Username or password are incorrect" });
     });
 }
 
 const handleLogout = async (req, res) => {
-    const cookies = req.cookies;
-    if (!cookies?.jwt) return res.sendStatus(204);
-
-    const refreshToken = cookies.jwt;
-    const userExists = await User.findOne({ refreshToken: refreshToken });
-    if (userExists) {
-        userExists.refreshToken = null;
-        await userExists.save();
+    const refreshToken = req.cookies?.jwt;
+    const foundUser = await User.findOne({ refreshToken: refreshToken });
+    if (foundUser) {
+        foundUser.refreshToken = '';
+        await foundUser.save();
     }
-    res.clearCookie('jwt', { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+    res.clearCookie('jwt', { httpOnly: true, sameSite: 'None', secure: true }); //sameSite: 'None', secure: true
     res.sendStatus(204);
-
+    log(`${foundUser.username} (id: ${foundUser.id}) has been logged out`, 'authLog');
 }
 
 const handleRefreshToken = async (req, res) => {
-    const cookies = req.cookies;
-    if (!cookies?.jwt) return res.sendStatus(401);
-
-    const refreshToken = cookies.jwt;
-    const userExists = await User.findOne({ refreshToken: refreshToken });
-    if (!userExists) return res.sendStatus(403);
+    const refreshToken = req.cookies?.jwt;
+    if (!refreshToken) return res.sendStatus(401);
+    const foundUser = await User.findOne({ refreshToken: refreshToken });
+    if (!foundUser) return res.sendStatus(401);
 
     jwt.verify(
         refreshToken,
         process.env.REFRESH_TOKEN_SECRET,
         async (err, decodedJWT) => {
-            if (err || userExists.username !== decodedJWT.username) return res.sendStatus(403);
+            if (err || foundUser.id !== decodedJWT.id) return res.sendStatus(403);
             const accessToken = jwt.sign(
-                { "username": decodedJWT.username },
+                { "id": decodedJWT.id },
                 process.env.ACCESS_TOKEN_SECRET,
                 { expiresIn: '30m' }
             );
-            res.json({ accessToken });
-        });
+            const fullname = `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
+            res.json({
+                userData: {
+                    userId: foundUser.id,
+                    username: foundUser.username,
+                    fullname: fullname,
+                    accessToken: accessToken,
+                    profile_pic_path: foundUser.profile_pic_path
+                }
+            });
+        }
+    );
+
+    log(`a new access token has been issued to ${foundUser.username} (id: ${foundUser.id})`, 'authLog');
 }
 
 export default {

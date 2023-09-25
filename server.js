@@ -7,12 +7,9 @@ import cors from 'cors';
 import { corsOptions } from './config/corsOptions.js';
 import { connectDB } from './config/dbConnect.js';
 
-// import path from 'path';
-// import dirname_filename from './utils/dirname_filename.js';
-// const { __dirname, __filename } = dirname_filename(import.meta);
-
 import usersRouter from './routes/usersRouter.js'
 import pollsRouter from './routes/pollsRouter.js'
+import logsRouter from './routes/logsRouter.js';
 import { credentials } from './middleware/credentials.js';
 
 //server init
@@ -30,11 +27,12 @@ app.use(express.static('./public'));
 
 //routes
 app.use('^/$|/home', (req, res) => {
-    res.send('Hello World!!!');
+    res.send('Welcome to Polly');
 });
 
 app.use('/users', usersRouter);
 app.use('/polls', pollsRouter);
+app.use('/logs', logsRouter);
 
 app.all('*', (req, res) => {
     res.status(404).send('There\'s nothing here...');

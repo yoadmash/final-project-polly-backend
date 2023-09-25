@@ -1,3 +1,3 @@
-export const allowedOrigins = [
-    'http://localhost:3000'
+export const allowedOrigins = [ //add prod domain to allow requests
+    'http://localhost:3000',
 ]

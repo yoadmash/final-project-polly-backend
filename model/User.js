@@ -1,10 +1,8 @@
 import mongoose, { Schema } from "mongoose";
-import { v4 as uuid } from 'uuid';
 
 const userSchema = new Schema({
     _id: {
-        type: String,
-        default: uuid(),
+        type: String
     },
     firstname: {
         type: String,
@@ -46,11 +44,19 @@ const userSchema = new Schema({
         type: [],
         required: false
     },
+    profile_pic_path: {
+        type: String,
+        required: false
+    },
     active: {
         type: Boolean,
         default: true,
         require: false
-    }
-});
+    },
+    registered_at: {
+        type: String,
+        required: true
+    },
+}, {versionKey: false});
 
 export const User = mongoose.model('User', userSchema); 
