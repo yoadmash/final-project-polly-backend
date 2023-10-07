@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { log } from '../utils/log.js';
 
 const handlePollCreate = async (req, res) => {
-    const { title, questions, settings } = req.body;
+    const { title, questions, settings, description, image_path } = req.body;
     if (!title || !questions || !settings) return res.status(400).json({ message: 'Missing data' });
 
     const polls = await Poll.find({ ownerId: req.user });
@@ -17,6 +17,8 @@ const handlePollCreate = async (req, res) => {
             _id: uuid(),
             ownerId: req.user,
             title: title,
+            description: description,
+            image_path: image_path,
             creation_date: format(Date.now(), 'dd/MM/yyyy'),
             creation_time: format(Date.now(), 'HH:mm:ss'),
             questions: questions,
@@ -47,9 +49,11 @@ const handlePollDelete = async (req, res) => {
     if (foundPoll.ownerId !== req.user) return res.status(404).json({ message: `User (id: ${req.user}) isn't the owner of poll (id: ${foundPoll.id})` });
 
     const user = await User.findById(req.user);
+    const updatedUserPolls = user.polls_created.filter(poll => poll !== pollId);
 
     try {
         await Poll.deleteOne({ _id: foundPoll.id });
+        await User.updateOne({_id: req.user}, {polls_created: updatedUserPolls});
         res.status(200).json({ message: `'${foundPoll.title}' has been deleted` });
         log(`poll '${foundPoll.title}' (id: ${foundPoll.id}) has been deleted by '${user.username}' (id: ${user.id})`, 'pollsLog');
     } catch (err) {

@@ -12,6 +12,14 @@ const pollSchema = new Schema({
         type: String,
         required: true
     },
+    description: {
+        type: String,
+        required: false
+    },
+    image_path: {
+        type: String,
+        required: false,
+    },
     creation_date: {
         type: String,
         required: true

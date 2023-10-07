@@ -136,7 +136,7 @@ const handleRefreshToken = async (req, res) => {
         }
     );
 
-    log(`a new access token has been issued to ${foundUser.username} (id: ${foundUser.id})`, 'authLog');
+    // log(`a new access token has been issued to ${foundUser.username} (id: ${foundUser.id})`, 'authLog');
 }
 
 export default {
