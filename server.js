@@ -15,7 +15,7 @@ import { credentials } from './middleware/credentials.js';
 //server init
 const app = express();
 const PORT = process.env.PORT || 3500;
-connectDB();
+await connectDB();
 
 //middleware
 app.use(credentials);

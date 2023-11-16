@@ -78,7 +78,7 @@ const handleLogin = async (req, res) => {
                 foundUser.refreshToken = refreshToken;
                 await foundUser.save();
                 res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000, secure: true, sameSite: 'None' }); //secure: true, sameSite: 'None'
-                const fullname = `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
+                const fullname = (foundUser.firstname === foundUser.lastname) ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}` : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
                 res.json({
                     message: `Login Complete`, userData: {
                         userId: foundUser.id,
@@ -123,7 +123,7 @@ const handleRefreshToken = async (req, res) => {
                 process.env.ACCESS_TOKEN_SECRET,
                 { expiresIn: '30m' }
             );
-            const fullname = `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
+            const fullname = (foundUser.firstname === foundUser.lastname) ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}` : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
             res.json({
                 userData: {
                     userId: foundUser.id,
