@@ -11,7 +11,7 @@ const log = async (logMsg, logName) => {
     const dateTime = `${format(new Date(), 'dd/MM/yyy, HH:mm:ss')}`;
     const formattedLogMsg = `[${uuid()} : ${dateTime}] => ${logMsg}\n\n`;
     
-    const SAVE_LOGS = true;
+    const SAVE_LOGS = false;
     if(SAVE_LOGS) {
         try {
             if (!fs.existsSync(path.join(__dirname, '..', 'logs'))) {

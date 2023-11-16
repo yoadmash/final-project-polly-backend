@@ -77,7 +77,7 @@ const handleLogin = async (req, res) => {
                 );
                 foundUser.refreshToken = refreshToken;
                 await foundUser.save();
-                res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }); //secure: true, sameSite: 'None'
+                res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000, secure: true, sameSite: 'None' }); //secure: true, sameSite: 'None'
                 const fullname = `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
                 res.json({
                     message: `Login Complete`, userData: {
@@ -102,7 +102,7 @@ const handleLogout = async (req, res) => {
         foundUser.refreshToken = '';
         await foundUser.save();
     }
-    res.clearCookie('jwt', { httpOnly: true, sameSite: 'None', secure: true }); //sameSite: 'None', secure: true
+    res.clearCookie('jwt', { httpOnly: true, secure: true, sameSite: 'None' }); //secure: true, sameSite: 'None'
     res.sendStatus(204);
     log(`${foundUser.username} (id: ${foundUser.id}) has been logged out`, 'authLog');
 }

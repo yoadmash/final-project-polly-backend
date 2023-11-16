@@ -37,7 +37,7 @@ const pollSchema = new Schema({
         required: false
     },
     settings: {
-        type: [],
+        type: {},
         required: true
     }
 }, {versionKey: false});
