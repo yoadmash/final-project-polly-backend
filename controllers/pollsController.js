@@ -204,7 +204,6 @@ const handleAnswerPoll = async (req, res) => {
         if (null_counter !== data.answers.length) {
             foundPoll.answers.push(data);
             await foundPoll.save();
-            console.log(JSON.stringify(data, null, 2));
         } else {
             throw new Error('Please answer atleast 1 question');
         }
