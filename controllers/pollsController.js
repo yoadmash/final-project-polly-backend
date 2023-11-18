@@ -92,6 +92,18 @@ const handlePollDelete = async (req, res) => {
             if (err) return res.status(500).json({ message: 'something is wrong, unable to delete picture' });
         });
     }
+
+    // updating poll_answered of each user who answer this poll.
+    // const usersAnswered = [];
+    // foundPoll.answers.forEach(answer => {
+    //     usersAnswered.push(answer.answered_by);
+    // });
+
+    // usersAnswered.forEach((user) => {
+    //     const foundUserAnswered = User.findById(user);
+    //     const updatedPollsAnswerd = foundUserAnswered.polls_answered.filter(poll => poll !== pollId);
+    //     console.log(updatedPollsAnswerd);
+    // });
 }
 
 const handlePollEdit = async (req, res) => {
@@ -174,15 +186,18 @@ const handleAnswerPoll = async (req, res) => {
     if (foundPoll.ownerId === req.user) return res.status(409).json({ message: 'You\'re not allowed to answer your own poll' });
 
     const foundUser = await User.findById(req.user);
-    if(foundUser.polls_answered.includes(pollId)) return res.status(409).json({message: 'You already answered this poll'});
+    if (foundUser.polls_answered.includes(pollId)) return res.status(409).json({ message: 'You already answered this poll' });
 
     let null_counter = 0;
     data.answers.forEach(answer => {
         if (typeof answer.value === 'object') {
             if (Array.isArray(answer.value) && answer.value.length > 0) {
-                const new_values_arr = [];
-                answer.value.forEach(value => {
-                    new_values_arr.push(JSON.parse(value));
+                const new_values_arr = {};
+                answer.value.forEach((value) => {
+                    const parsedValue = JSON.parse(value);
+                    if (parsedValue) {
+                        new_values_arr[parsedValue.original_index] = parsedValue;
+                    }
                 })
                 answer.value = new_values_arr;
             }
