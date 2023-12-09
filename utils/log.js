@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 const logToDB = async (log_obj, is_error) => {
     const logged_at = `${format(new Date(), 'dd/MM/yyy, HH:mm:ss')}`;
 
-    const SAVE_LOGS = false;
+    const SAVE_LOGS = true;
     if(SAVE_LOGS) {
         try {
             await Log.create({ _id: uuid(), ...log_obj, is_error, logged_at });
