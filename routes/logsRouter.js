@@ -5,7 +5,7 @@ import { verifyJWT } from '../middleware/verifyJWT.js';
 const logsRouter = express.Router();
 const regex = '^/'
 
-// logsRouter.use(verifyJWT);
-logsRouter.route(regex + ':logFileName').get(logsController.handleShowLogs);
+logsRouter.use(verifyJWT);
+logsRouter.route(regex).get(logsController.handleGetLogs);
 
 export default logsRouter;

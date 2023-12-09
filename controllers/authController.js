@@ -4,7 +4,7 @@ dotenv.config();
 import { v4 as uuid } from 'uuid';
 import { User } from '../model/User.js';
 import { format } from 'date-fns';
-import { log } from '../utils/log.js';
+import { logToDB } from '../utils/log.js';
 
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
@@ -24,7 +24,11 @@ const handleRegister = async (req, res) => {
                         duplicate.active = true;
                         await duplicate.save();
                         res.status(200).json({ message: 'user activated' });
-                        log(`${duplicate.username} (id: ${duplicate.id}) has been activated`, 'usersLog');
+                        logToDB({
+                            user_id: duplicate.id,
+                            log_message: 'user activated',
+                            log_type: 'users'
+                        }, false);
                     } catch {
                         res.status(500).send(err);
                     }
@@ -47,7 +51,11 @@ const handleRegister = async (req, res) => {
                 registered_at: format(Date.now(), 'dd/MM/yyyy')
             });
             res.status(201).json({ message: `Registration Complete` });
-            log(`${newUser.username} (id: ${newUser.id}) has been registered`, 'authLog');
+            logToDB({
+                user_id: newUser.id,
+                log_message: 'user registered',
+                log_type: 'auth'
+            }, false);
         } catch (err) {
             res.status(500).json({ message: err.errors });
         }
@@ -84,10 +92,15 @@ const handleLogin = async (req, res) => {
                         userId: foundUser.id,
                         fullname: fullname,
                         accessToken: accessToken,
+                        admin: foundUser.admin,
                         profile_pic_path: foundUser.profile_pic_path
                     }
                 });
-                log(`${foundUser.username} (id: ${foundUser.id}) has been logged in`, 'authLog');
+                logToDB({
+                    user_id: foundUser.id,
+                    log_message: 'user logged in',
+                    log_type: 'auth'
+                }, false);
             } catch {
                 res.status(500).send(err);
             }
@@ -104,7 +117,12 @@ const handleLogout = async (req, res) => {
     }
     res.clearCookie('jwt', { httpOnly: true, secure: true, sameSite: 'None' }); //secure: true, sameSite: 'None'
     res.sendStatus(204);
-    log(`${foundUser.username} (id: ${foundUser.id}) has been logged out`, 'authLog');
+    logToDB({
+        user_id: foundUser?.id,
+        log_message: 'user logged out',
+        log_type: 'auth'
+    }, false);
+    
 }
 
 const handleRefreshToken = async (req, res) => {
@@ -130,13 +148,18 @@ const handleRefreshToken = async (req, res) => {
                     username: foundUser.username,
                     fullname: fullname,
                     accessToken: accessToken,
+                    admin: foundUser.admin,
                     profile_pic_path: foundUser.profile_pic_path
                 }
             });
         }
     );
 
-    // log(`a new access token has been issued to ${foundUser.username} (id: ${foundUser.id})`, 'authLog');
+    logToDB({
+        user_id: foundUser.id,
+        log_type: 'auth',
+        log_message: 'new access token issued'
+    }, false);
 }
 
 export default {

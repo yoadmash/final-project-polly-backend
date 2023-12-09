@@ -4,9 +4,15 @@ const pollSchema = new Schema({
     _id: {
         type: String
     },
-    ownerId: {
-        type: String,
-        required: true,
+    owner: {
+        id: {
+            type: String,
+            required: true
+        },
+        username: {
+            type: String,
+            required: true
+        }
     },
     title: {
         type: String,
@@ -40,6 +46,6 @@ const pollSchema = new Schema({
         type: {},
         required: true
     }
-}, {versionKey: false});
+}, { versionKey: false });
 
 export const Poll = mongoose.model('Poll', pollSchema); 

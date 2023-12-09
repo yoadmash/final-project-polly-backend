@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { format } from 'date-fns';
-import { log } from '../utils/log.js';
+import { logToDB } from '../utils/log.js';
 import { Poll } from "../model/Poll.js";
 import { User } from "../model/User.js";
 
@@ -14,15 +14,18 @@ const handlePollCreate = async (req, res) => {
     const { title, questions, settings, description, image_path } = JSON.parse(req.body.form_data);
     if (!title || !questions || !settings) return res.status(400).json({ message: 'Missing data' });
 
-    const polls = await Poll.find({ ownerId: req.user });
+    const polls = await Poll.find({ "owner.id": req.user });
     const duplicate = polls.find(poll => poll.title === title);
     if (duplicate) return res.status(409).json({ message: `A poll with title '${title}' already exists` });
+
+    const foundUser = await User.findById(req.user).select('username');
+    if (!foundUser) return res.status(404).json({ message: 'User not found' });
 
     let newPoll = {};
     try {
         newPoll = await Poll.create({
             _id: uuid(),
-            ownerId: req.user,
+            owner: { id: foundUser.id, username: foundUser.username },
             title: title,
             description: description,
             image_path: image_path,
@@ -40,28 +43,32 @@ const handlePollCreate = async (req, res) => {
             message: 'Poll created',
             poll: newPoll
         });
-        log(`a new poll (id: ${newPoll.id}) has been created by '${user.username}' (id: ${user.id})`, 'pollsLog');
+        logToDB({
+            poll_id: newPoll.id,
+            log_type: 'polls',
+            log_message: `poll created by user: ${req.user}`,
+        }, false);
+
+        if (req.files) {
+            const file = Object.values(req.files)[0];
+            const fileName = newPoll.id;
+            const extName = path.extname(file.name);
+            const fullFileName = `${fileName}${extName}`;
+            const filePath = path.join(__dirname, '..', 'public', 'polls_pics', fullFileName);
+            const pollFilePath = `/polls_pics/${fullFileName}`;
+            file.mv(filePath, async (err) => {
+                if (err) return res.status(500).json({ message: 'something is wrong, unable to upload' });
+                try {
+                    const createdPoll = await Poll.findById(newPoll.id);
+                    createdPoll.image_path = pollFilePath;
+                    await createdPoll.save();
+                } catch (err) {
+                    res.status(500).json({ message: err.errors });
+                }
+            });
+        }
     } catch (err) {
         return res.status(500).json({ message: err });
-    }
-
-    if (req.files) {
-        const file = Object.values(req.files)[0];
-        const fileName = newPoll.id;
-        const extName = path.extname(file.name);
-        const fullFileName = `${fileName}${extName}`;
-        const filePath = path.join(__dirname, '..', 'public', 'polls_pics', fullFileName);
-        const pollFilePath = `/polls_pics/${fullFileName}`;
-        file.mv(filePath, async (err) => {
-            if (err) return res.status(500).json({ message: 'something is wrong, unable to upload' });
-            try {
-                const createdPoll = await Poll.findById(newPoll.id);
-                createdPoll.image_path = pollFilePath;
-                await createdPoll.save();
-            } catch (err) {
-                res.status(500).json({ message: err.errors });
-            }
-        });
     }
 }
 
@@ -72,108 +79,166 @@ const handlePollDelete = async (req, res) => {
     const foundPoll = await Poll.findById(pollId);
     if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${pollId}` });
 
-    if (foundPoll.ownerId !== req.user) return res.status(404).json({ message: `User (id: ${req.user}) isn't the owner of poll (id: ${foundPoll.id})` });
+    if (foundPoll.owner.id !== req.user) {
+        const foundUser = await User.findById(req.user);
+        const answered = foundUser.polls_answered.includes(pollId);
+        const visited = foundUser.polls_visited.includes(pollId);
+
+        if (answered) {
+            foundUser.polls_answered = foundUser.polls_answered.filter(poll => poll !== pollId);
+            const answer_exists = foundPoll.answers.find(answer => answer.answered_by.user_id === foundUser.id);
+            if (answer_exists && foundPoll.settings.usersCanDeleteAnswer) {
+                foundPoll.answers = foundPoll.answers.filter(answer => answer.answered_by.user_id !== foundUser.id);
+                await foundPoll.save();
+                logToDB({
+                    poll_id: foundPoll.id,
+                    log_message: `${foundUser.id} deleted his answer in poll: ${foundPoll.id}`,
+                    log_type: 'polls'
+                }, false);
+            }
+        }
+
+        if (visited) {
+            foundUser.polls_visited = foundUser.polls_visited.filter(poll => poll !== pollId);
+        }
+
+        await foundUser.save();
+        return res.sendStatus(200);
+    }
 
     const user = await User.findById(req.user);
     const updatedUserPolls = user.polls_created.filter(poll => poll !== pollId);
+
+    if (foundPoll.image_path) {
+        const fullPath = path.join(__dirname, '../public', foundPoll.image_path);
+        fs.unlink(fullPath, async (err) => {
+            if (err) {
+                logToDB({
+                    poll_id: pollId,
+                    log_message: `unable to delete poll image`,
+                    log_type: 'polls'
+                }, true);
+            }
+        });
+    }
+
+    const usersAnswered = [];
+    foundPoll?.answers?.forEach(answer => {
+        usersAnswered.push(answer.answered_by);
+    });
+
+    if (usersAnswered.length > 0) {
+        usersAnswered.forEach(async (user) => {
+            const foundUserAnswered = await User.findById(user);
+            if (foundUserAnswered) {
+                const updatedPollsAnswerd = foundUserAnswered.polls_answered.filter(poll => poll !== pollId);
+                foundUserAnswered.polls_answered = updatedPollsAnswerd;
+                try {
+                    await foundUserAnswered.save();
+                } catch (err) {
+                    logToDB({
+                        poll_id: pollId,
+                        log_message: `unable to delete poll from poll_answered of user: ${user}`,
+                        log_type: 'polls'
+                    }, true);
+                }
+            }
+        });
+    }
 
     try {
         await Poll.deleteOne({ _id: foundPoll.id });
         await User.updateOne({ _id: req.user }, { polls_created: updatedUserPolls });
         res.status(200).json({ message: `'${foundPoll.title}' has been deleted` });
-        log(`poll '${foundPoll.title}' (id: ${foundPoll.id}) has been deleted by '${user.username}' (id: ${user.id})`, 'pollsLog');
+        logToDB({
+            poll_id: foundPoll.id,
+            log_message: `poll deleted by user: ${user.id}`,
+            log_type: 'polls'
+        }, false);
     } catch (err) {
-        return res.status(500).json({ message: err.errors });
+        logToDB({
+            poll_id: foundPoll.id,
+            log_message: `unable to delete poll`,
+            log_type: 'polls'
+        }, true);
+        return res.status(500).json({ message: err.message });
     }
-
-    if (foundPoll.image_path) {
-        const fullPath = path.join(__dirname, '../public', foundPoll.image_path);
-        fs.unlink(fullPath, async (err) => {
-            if (err) return res.status(500).json({ message: 'something is wrong, unable to delete picture' });
-        });
-    }
-
-    // updating poll_answered of each user who answer this poll.
-    // const usersAnswered = [];
-    // foundPoll.answers.forEach(answer => {
-    //     usersAnswered.push(answer.answered_by);
-    // });
-
-    // usersAnswered.forEach((user) => {
-    //     const foundUserAnswered = User.findById(user);
-    //     const updatedPollsAnswerd = foundUserAnswered.polls_answered.filter(poll => poll !== pollId);
-    //     console.log(updatedPollsAnswerd);
-    // });
 }
 
 const handlePollEdit = async (req, res) => {
-    const { pollId, newTitle, questions, settings } = req.body;
-    if (!pollId) return res.status(400).json({ message: 'Missing poll id' });
-    if (!newTitle || !questions || !settings) return res.status(400).json({ message: 'Missing data' });
+    const { id } = req.params;
+    const { title, questions, settings, description } = JSON.parse(req.body.form_data);
+    if (!title || !questions || !settings) return res.status(400).json({ message: 'Missing data' });
+    if (!id) return res.status(400).json({ message: 'Missing poll id' });
 
-    const foundPoll = await Poll.findById(pollId);
-    if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${pollId}` });
+    const foundPoll = await Poll.findById(id);
+    if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${id}` });
 
-    if (foundPoll.ownerId !== req.user) return res.status(404).json({ message: `User (id: ${req.user}) isn't the owner of poll (id: ${foundPoll.id})` });
+    if (foundPoll.owner.id !== req.user) return res.status(404).json({ message: `User (id: ${req.user}) isn't the owner of poll (id: ${foundPoll.id})` });
+    if (foundPoll.answers.length > 0) return res.status(409).json({ message: 'This poll has been answered already and can\'t be edited' });
 
-    const polls = await Poll.find({ ownerId: req.user });
-    const pollExist = polls.find(poll => poll.title === newTitle);
-    if (pollExist) return res.status(409).json({ message: `A poll with title '${newTitle}' already exists` });
+    const polls = await Poll.find({ "owner.id": req.user });
+    const pollExist = polls.find(poll => poll.title === title && poll.id !== foundPoll.id);
+    if (pollExist) return res.status(409).json({ message: `A poll with title '${title}' already exists` });
 
-    const oldPollString = JSON.stringify(foundPoll);
-    const user = await User.findById(req.user);
+    let { delete_image, old_image_path } = req.body;
 
     try {
-        foundPoll.title = newTitle;
+        foundPoll.title = title;
+        foundPoll.description = description;
         foundPoll.questions = questions;
         foundPoll.settings = settings;
+
+        if (req.files) {
+            const file = Object.values(req.files)[0];
+            const fileName = foundPoll.id;
+            const extName = path.extname(file.name);
+            const fullFileName = `${fileName}${extName}`;
+            const filePath = path.join(__dirname, '..', 'public', 'polls_pics', fullFileName);
+            const pollFilePath = `/polls_pics/${fullFileName}`;
+            await file.mv(filePath, async (err) => {
+                if (err) {
+                    logToDB({
+                        poll_id: foundPoll.id,
+                        log_message: `unable to upload poll image`,
+                        log_type: 'polls'
+                    }, true);
+                }
+            });
+            foundPoll.image_path = pollFilePath;
+        }
+        
+        if (delete_image === 'true' || old_image_path !== foundPoll.image_path) {
+            const fullPath = path.join(__dirname, '../public', old_image_path);
+            fs.unlink(fullPath, async (err) => {
+                if (err) {
+                    logToDB({
+                        poll_id: foundPoll.id,
+                        log_message: `unable to delete poll image`,
+                        log_type: 'polls'
+                    }, true);
+                };
+                logToDB({
+                    poll_id: foundPoll.id,
+                    log_message: `poll image removed`,
+                    log_type: 'polls'
+                }, false);
+            });
+        }
+        
+        if(delete_image === 'true') {
+            foundPoll.image_path = '';
+        }
+
         await foundPoll.save();
         res.status(200).json({
-            message: `poll '${foundPoll.id}' has been updated`,
+            message: `poll '${foundPoll.id}' has been editted`,
             poll: foundPoll
         });
-
-        log(`poll (id: ${foundPoll.id}) has been edited by '${user.username}' (id: ${user.id})\n
-        before edit: ${oldPollString}\n
-        after edit: ${JSON.stringify(foundPoll)}`, 'pollsLog');
 
     } catch (err) {
         res.status(500).json({ message: err.errors });
     }
-}
-
-const handlePollRename = async (req, res) => {
-    const { pollId, newTitle } = req.body;
-    if (!pollId) return res.status(400).json({ message: 'Missing poll id' });
-    if (!newTitle) return res.status(400).json({ message: 'Missing new title' });
-
-    const foundPoll = await Poll.findById(pollId);
-    if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${pollId}` });
-
-    if (foundPoll.ownerId !== req.user) return res.status(404).json({ message: `User (id: ${req.user}) isn't the owner of poll (id: ${foundPoll.id})` });
-
-    const polls = await Poll.find({ ownerId: req.user });
-    const pollExist = polls.find(poll => poll.title === newTitle);
-    if (pollExist) return res.status(409).json({ message: `A poll with title '${newTitle}' already exists` });
-
-    const oldPollTitle = String(foundPoll.title);
-    const user = await User.findById(req.user);
-
-    try {
-        foundPoll.title = newTitle;
-        await foundPoll.save();
-        res.status(200).json({
-            message: `poll '${foundPoll.id}' has been renamed to '${newTitle}'`,
-            poll: foundPoll
-        });
-
-        log(`poll (id: ${foundPoll.id}) has been renamed by '${user.username}'(id: ${user.id})\n
-        before rename: ${oldPollTitle}\n
-        after rename: ${foundPoll.title}`, 'pollsLog');
-    } catch (err) {
-        res.status(500).json({ message: err.errors });
-    }
-
 }
 
 const handleAnswerPoll = async (req, res) => {
@@ -183,7 +248,7 @@ const handleAnswerPoll = async (req, res) => {
 
     const foundPoll = await Poll.findById(pollId);
     if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${pollId}` });
-    if (foundPoll.ownerId === req.user) return res.status(409).json({ message: 'You\'re not allowed to answer your own poll' });
+    if (foundPoll.owner.id === req.user) return res.status(409).json({ message: 'You\'re not allowed to answer your own poll' });
 
     const foundUser = await User.findById(req.user);
     if (foundUser.polls_answered.includes(pollId)) return res.status(409).json({ message: 'You already answered this poll' });
@@ -224,44 +289,92 @@ const handleAnswerPoll = async (req, res) => {
         }
 
         foundUser.polls_answered.push(pollId);
+        foundUser.polls_visited = foundUser.polls_visited.filter(poll => poll !== pollId);
+
         await foundUser.save();
 
         res.json({ message: 'success' });
+        logToDB({
+            poll_id: pollId,
+            log_message: `poll answered by user: ${foundUser.id} `,
+            log_type: 'polls'
+        }, false);
     } catch (err) {
         res.status(400).json({ message: err.message });
     }
 }
 
-const handleGetPollAnswers = async (req, res) => {
-    const { pollId } = req.body;
-    if (!pollId) return res.status(400).json({ message: 'Missing poll id' });
+const handleSearchPolls = async (req, res) => {
+    const { searchValue } = req.body;
+    if (!searchValue) return res.status(204).json({ message: 'Missing Title or ID' });
 
-    const foundPoll = await Poll.findById(pollId);
-    if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${pollId}` });
+    const select = 'owner.username title image_path creation_date creation_time';
+    let searchResults = await Poll.find({ _id: searchValue }).select(select);
+    if (searchResults.length === 0) {
+        searchResults = await Poll.find({ title: { $regex: searchValue, $options: 'i' } }).select(select);
+    }
 
-    if (foundPoll.ownerId !== req.user) return res.status(404).json({ message: `User (id: ${req.user}) isn't the owner of poll (id: ${foundPoll.id})` });
-
-    if (foundPoll.answers.length === 0) return res.status(204).json({ message: 'No answers' });
-
-    res.json({ answers: foundPoll.answers });
+    res.json({ searchResults });
 }
 
-const handleGetPollById = async (req, res) => {
+const handleGetPollAnswers = async (req, res) => {
     const { id } = req.params;
     if (!id) return res.status(400).json({ message: 'Missing poll id' });
 
     const foundPoll = await Poll.findById(id);
     if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${id}` });
 
+    const userAnswers = foundPoll.answers?.find(answer => answer.answered_by.user_id === req.user)?.answers;
+    if (!userAnswers) return res.sendStatus(204);
+
+    res.json({ userAnswers });
+}
+
+const handleGetPollById = async (req, res) => {
+    const { id } = req.params;
+    const { include_answers } = req.query;
+    if (!id) return res.status(400).json({ message: 'Missing poll id' });
+
+    const selectString = (include_answers === 'true')
+        ? 'owner title description image_path creation_date questions settings answers'
+        : 'owner title description image_path creation_date questions settings';
+    const foundPoll = await Poll.findById(id).select(selectString);
+    if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${id}` });
+
     res.status(200).json({ foundPoll });
+}
+
+const handleVisitPoll = async (req, res) => {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ message: 'Missing poll id' });
+
+    const foundPoll = await Poll.findById(id).select('-_id owner.id answers');
+    if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${id}` });
+
+    const foundUser = await User.findById(req.user);
+
+    if (!foundUser.polls_answered.includes(id) && foundPoll.answers.find(answer => answer.answered_by === foundUser.id)) {
+        foundUser.polls_answered.push(id);
+        await foundUser.save();
+        return res.sendStatus(200);
+    };
+
+    if (!foundUser.polls_answered.includes(id) && !foundUser.polls_visited.includes(id)) {
+        foundUser.polls_visited.push(id);
+        await foundUser.save();
+    }
+
+    res.sendStatus(200);
+
 }
 
 export default {
     handlePollCreate,
     handlePollDelete,
     handlePollEdit,
-    handlePollRename,
     handleAnswerPoll,
+    handleSearchPolls,
     handleGetPollAnswers,
     handleGetPollById,
+    handleVisitPoll,
 }

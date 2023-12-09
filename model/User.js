@@ -44,6 +44,10 @@ const userSchema = new Schema({
         type: [],
         required: false
     },
+    polls_visited: {
+        type: [],
+        required: false
+    },
     profile_pic_path: {
         type: String,
         required: false
@@ -52,6 +56,11 @@ const userSchema = new Schema({
         type: Boolean,
         default: true,
         require: false
+    },
+    admin: {
+        type: Boolean,
+        default: false,
+        required: false,
     },
     registered_at: {
         type: String,
