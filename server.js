@@ -27,7 +27,7 @@ app.use(express.static('./public'));
 
 //routes
 app.use('^/$|/home', (req, res) => {
-    res.send('Welcome to Polly');
+    res.redirect('http://localhost:3000');
 });
 
 app.use('/users', usersRouter);
