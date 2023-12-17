@@ -45,8 +45,9 @@ const handlePollCreate = async (req, res) => {
         });
         logToDB({
             poll_id: newPoll.id,
+            poll_title: newPoll.title,
             log_type: 'polls',
-            log_message: `poll created by user: ${req.user}`,
+            log_message: `new poll created by ${foundUser.username}`,
         }, false);
 
         if (req.files) {
@@ -79,20 +80,23 @@ const handlePollDelete = async (req, res) => {
     const foundPoll = await Poll.findById(pollId);
     if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${pollId}` });
 
-    if (foundPoll.owner.id !== req.user) {
-        const foundUser = await User.findById(req.user);
+    const foundUser = await User.findById(req.user);
+    if (!foundUser) return res.status(404).json({ message: 'User not found' });
+
+    if (foundPoll.owner.id !== foundUser.id) { // removes poll from answered or visited
         const answered = foundUser.polls_answered.includes(pollId);
         const visited = foundUser.polls_visited.includes(pollId);
 
         if (answered) {
             foundUser.polls_answered = foundUser.polls_answered.filter(poll => poll !== pollId);
             const answer_exists = foundPoll.answers.find(answer => answer.answered_by.user_id === foundUser.id);
-            if (answer_exists && foundPoll.settings.usersCanDeleteAnswer) {
+            if (answer_exists && foundPoll.settings.usersCanDeleteAnswer) { // removes the answer from the poll itself
                 foundPoll.answers = foundPoll.answers.filter(answer => answer.answered_by.user_id !== foundUser.id);
                 await foundPoll.save();
                 logToDB({
                     poll_id: foundPoll.id,
-                    log_message: `${foundUser.id} deleted his answer in poll: ${foundPoll.id}`,
+                    poll_title: foundPoll.title,
+                    log_message: `${foundUser.username} deleted his answer`,
                     log_type: 'polls'
                 }, false);
             }
@@ -106,15 +110,13 @@ const handlePollDelete = async (req, res) => {
         return res.sendStatus(200);
     }
 
-    const user = await User.findById(req.user);
-    const updatedUserPolls = user.polls_created.filter(poll => poll !== pollId);
-
-    if (foundPoll.image_path) {
+    if (foundPoll.image_path?.length > 0) {
         const fullPath = path.join(__dirname, '../public', foundPoll.image_path);
         fs.unlink(fullPath, async (err) => {
             if (err) {
                 logToDB({
-                    poll_id: pollId,
+                    poll_id: foundPoll.id,
+                    poll_title: foundPoll.title,
                     log_message: `unable to delete poll image`,
                     log_type: 'polls'
                 }, true);
@@ -127,9 +129,11 @@ const handlePollDelete = async (req, res) => {
         usersAnswered.push(answer.answered_by);
     });
 
+    const updatedUserPolls = foundUser.polls_created.filter(poll => poll !== pollId);
+
     if (usersAnswered.length > 0) {
         usersAnswered.forEach(async (user) => {
-            const foundUserAnswered = await User.findById(user);
+            const foundUserAnswered = await User.findById(user.user_id);
             if (foundUserAnswered) {
                 const updatedPollsAnswerd = foundUserAnswered.polls_answered.filter(poll => poll !== pollId);
                 foundUserAnswered.polls_answered = updatedPollsAnswerd;
@@ -137,8 +141,9 @@ const handlePollDelete = async (req, res) => {
                     await foundUserAnswered.save();
                 } catch (err) {
                     logToDB({
-                        poll_id: pollId,
-                        log_message: `unable to delete poll from poll_answered of user: ${user}`,
+                        poll_id: foundPoll.id,
+                        poll_title: foundPoll.title,
+                        log_message: `unable to delete poll fro\npoll_answered of user: ${user.user_name} (${user.user_id})`,
                         log_type: 'polls'
                     }, true);
                 }
@@ -152,12 +157,14 @@ const handlePollDelete = async (req, res) => {
         res.status(200).json({ message: `'${foundPoll.title}' has been deleted` });
         logToDB({
             poll_id: foundPoll.id,
-            log_message: `poll deleted by user: ${user.id}`,
+            poll_title: foundPoll.title,
+            log_message: `poll deleted by ${foundUser.username}`,
             log_type: 'polls'
         }, false);
     } catch (err) {
         logToDB({
             poll_id: foundPoll.id,
+            poll_title: foundPoll.title,
             log_message: `unable to delete poll`,
             log_type: 'polls'
         }, true);
@@ -174,8 +181,10 @@ const handlePollEdit = async (req, res) => {
     const foundPoll = await Poll.findById(id);
     if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${id}` });
 
-    if (foundPoll.owner.id !== req.user) return res.status(404).json({ message: `User (id: ${req.user}) isn't the owner of poll (id: ${foundPoll.id})` });
-    if (foundPoll.answers.length > 0) return res.status(409).json({ message: 'This poll has been answered already and can\'t be edited' });
+    const foundUser = await User.findById(req.user);
+
+    if (foundPoll.owner.id !== foundUser.id) return res.status(404).json({ message: `Unable to edit` });
+    if (foundPoll.answers.length > 0 && !foundUser.admin) return res.status(409).json({ message: 'This poll has been answered already and can\'t be edited' });
 
     const polls = await Poll.find({ "owner.id": req.user });
     const pollExist = polls.find(poll => poll.title === title && poll.id !== foundPoll.id);
@@ -200,33 +209,44 @@ const handlePollEdit = async (req, res) => {
                 if (err) {
                     logToDB({
                         poll_id: foundPoll.id,
+                        poll_title: foundPoll.title,
                         log_message: `unable to upload poll image`,
                         log_type: 'polls'
                     }, true);
                 }
             });
+            logToDB({
+                poll_id: foundPoll.id,
+                poll_title: foundPoll.title,
+                log_message: `poll image uploaded`,
+                log_type: 'polls'
+            }, false);
             foundPoll.image_path = pollFilePath;
         }
-        
-        if (delete_image === 'true' || old_image_path !== foundPoll.image_path) {
+
+        if (delete_image === 'true' || (old_image_path.length > 0 && old_image_path !== foundPoll.image_path)) {
             const fullPath = path.join(__dirname, '../public', old_image_path);
             fs.unlink(fullPath, async (err) => {
                 if (err) {
+                    console.log(err);
+                    console.log(old_image_path);
                     logToDB({
                         poll_id: foundPoll.id,
+                        poll_title: foundPoll.title,
                         log_message: `unable to delete poll image`,
                         log_type: 'polls'
                     }, true);
                 };
                 logToDB({
                     poll_id: foundPoll.id,
+                    poll_title: foundPoll.title,
                     log_message: `poll image removed`,
                     log_type: 'polls'
                 }, false);
             });
         }
-        
-        if(delete_image === 'true') {
+
+        if (delete_image === 'true') {
             foundPoll.image_path = '';
         }
 
@@ -295,8 +315,9 @@ const handleAnswerPoll = async (req, res) => {
 
         res.json({ message: 'success' });
         logToDB({
-            poll_id: pollId,
-            log_message: `poll answered by user: ${foundUser.id} `,
+            poll_id: foundPoll.id,
+            poll_title: foundPoll.title,
+            log_message: `poll answered by ${foundUser.username}`,
             log_type: 'polls'
         }, false);
     } catch (err) {
@@ -353,7 +374,7 @@ const handleVisitPoll = async (req, res) => {
 
     const foundUser = await User.findById(req.user);
 
-    if (!foundUser.polls_answered.includes(id) && foundPoll.answers.find(answer => answer.answered_by === foundUser.id)) {
+    if (!foundUser.polls_answered.includes(id) && foundPoll.answers.find(answer => answer.answered_by.user_id === foundUser.id)) {
         foundUser.polls_answered.push(id);
         await foundUser.save();
         return res.sendStatus(200);

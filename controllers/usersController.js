@@ -14,6 +14,7 @@ const handleProfilePictureUpload = async (req, res) => {
             if (err) {
                 logToDB({
                     user_id: foundUser.id,
+                    user_name: foundUser.username,
                     log_message: `unable to delete current profile picture`,
                     log_type: 'users'
                 }, true);
@@ -31,6 +32,7 @@ const handleProfilePictureUpload = async (req, res) => {
         if (err) {
             logToDB({
                 user_id: foundUser.id,
+                user_name: foundUser.username,
                 log_message: `unable to upload profile picture`,
                 log_type: 'users'
             }, true);
@@ -42,6 +44,7 @@ const handleProfilePictureUpload = async (req, res) => {
         } catch (err) {
             logToDB({
                 user_id: foundUser.id,
+                user_name: foundUser.username,
                 log_message: `unable to save profile picture path`,
                 log_type: 'users'
             }, true);
@@ -51,6 +54,7 @@ const handleProfilePictureUpload = async (req, res) => {
 
     logToDB({
         user_id: foundUser.id,
+        user_name: foundUser.username,
         log_message: `profile picture uploaded`,
         log_type: 'users'
     }, false);
@@ -66,6 +70,7 @@ const handleRemoveProfilePicture = async (req, res) => {
         if (err) {
             logToDB({
                 user_id: foundUser.id,
+                user_name: foundUser.username,
                 log_message: `unable to delete profile picture`,
                 log_type: 'users'
             }, true);
@@ -76,27 +81,12 @@ const handleRemoveProfilePicture = async (req, res) => {
         await foundUser.save();
         logToDB({
             user_id: foundUser.id,
+            user_name: foundUser.username,
             log_message: `profile picture removed`,
             log_type: 'users'
         }, false);
         return res.sendStatus(200);
     });
-}
-
-const handleUserDelete = async (req, res) => {
-    const foundUser = await User.findById(req.user);
-    if (foundUser.active) return res.status(406).json({ message: 'Unable to delete an active user' });
-    try {
-        await User.deleteOne({ _id: foundUser.id });
-        res.status(200).json({ message: `${foundUser.username} has been deleted` });
-        logToDB({
-            user_id: foundUser.id,
-            log_message: `user deleted`,
-            log_type: 'users'
-        }, false);
-    } catch (err) {
-        res.status(500).json({ message: err.errors });
-    }
 }
 
 const handleUserActiveStatus = async (req, res) => {
@@ -111,6 +101,7 @@ const handleUserActiveStatus = async (req, res) => {
         res.status(200).json({ message: `${foundUser.username} has been ${(Number(state)) ? 'activated' : 'deactivated'}` });
         logToDB({
             user_id: foundUser.id,
+            user_name: foundUser.username,
             log_message: `user ${(Number(state)) ? 'activated' : 'deactivated'}`,
             log_type: 'users'
         }, false);
@@ -123,7 +114,7 @@ const handleGetUserById = async (req, res) => {
     const { id } = req.params;
     if (!id) return res.status(400).json({ message: 'Missing user id' });
 
-    const foundUser = await User.findById(id).select('-_id username');
+    const foundUser = await User.findById(id).select('-_id username profile_pic_path');
     if (!foundUser) return res.status(404).json({ message: `No user match this id: ${id}` });
 
     res.status(200).json({ foundUser });
@@ -131,7 +122,7 @@ const handleGetUserById = async (req, res) => {
 
 const handleGetUserPolls = async (req, res) => {
     const foundUser = await User.findById(req.user);
-    if (!foundUser) return res.status(404).json({ message: `No user match this id: ${id}` });
+    if (!foundUser) return res.status(404).json({ message: `No user match this id: ${req.user}` });
     const polls_created = JSON.parse(JSON.stringify(foundUser.polls_created));
     const polls_answered = JSON.parse(JSON.stringify(foundUser.polls_answered));
     const polls_visited = JSON.parse(JSON.stringify(foundUser.polls_visited));
@@ -146,7 +137,6 @@ const handleGetUserPolls = async (req, res) => {
 export default {
     handleProfilePictureUpload,
     handleRemoveProfilePicture,
-    handleUserDelete,
     handleUserActiveStatus,
     handleGetUserById,
     handleGetUserPolls,

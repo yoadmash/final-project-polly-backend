@@ -2,17 +2,23 @@ import mongoose, { Schema } from "mongoose";
 
 const logSchema = new Schema({
     _id: {
-        type: String
+        type: String,
+    },
+    date_time: {
+        type: String,
+        required: true
     },
     user_id: {
+        type: String,
+    },
+    user_name: {
         type: String,
     },
     poll_id: {
         type: String,
     },
-    logged_at: {
+    poll_title: {
         type: String,
-        required: true
     },
     log_message: {
         type: String,
@@ -26,6 +32,6 @@ const logSchema = new Schema({
         type: String,
         required: true
     }
-}, {versionKey: false});
+}, { versionKey: false });
 
 export const Log = mongoose.model('Log', logSchema); 

@@ -26,6 +26,7 @@ const handleRegister = async (req, res) => {
                         res.status(200).json({ message: 'user activated' });
                         logToDB({
                             user_id: duplicate.id,
+                            user_name: duplicate.username,
                             log_message: 'user activated',
                             log_type: 'users'
                         }, false);
@@ -53,6 +54,7 @@ const handleRegister = async (req, res) => {
             res.status(201).json({ message: `Registration Complete` });
             logToDB({
                 user_id: newUser.id,
+                user_name: newUser.username,
                 log_message: 'user registered',
                 log_type: 'auth'
             }, false);
@@ -98,6 +100,7 @@ const handleLogin = async (req, res) => {
                 });
                 logToDB({
                     user_id: foundUser.id,
+                    user_name: foundUser.username,
                     log_message: 'user logged in',
                     log_type: 'auth'
                 }, false);
@@ -119,10 +122,11 @@ const handleLogout = async (req, res) => {
     res.sendStatus(204);
     logToDB({
         user_id: foundUser?.id,
+        user_name: foundUser?.username,
         log_message: 'user logged out',
         log_type: 'auth'
     }, false);
-    
+
 }
 
 const handleRefreshToken = async (req, res) => {
@@ -141,7 +145,9 @@ const handleRefreshToken = async (req, res) => {
                 process.env.ACCESS_TOKEN_SECRET,
                 { expiresIn: '30m' }
             );
-            const fullname = (foundUser.firstname === foundUser.lastname) ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}` : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
+            const fullname = (foundUser.firstname === foundUser.lastname)
+            ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}`
+            : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
             res.json({
                 userData: {
                     userId: foundUser.id,
@@ -152,14 +158,15 @@ const handleRefreshToken = async (req, res) => {
                     profile_pic_path: foundUser.profile_pic_path
                 }
             });
+
+            logToDB({
+                user_id: foundUser.id,
+                user_name: foundUser.username,
+                log_type: 'auth',
+                log_message: 'new access token issued'
+            }, false);
         }
     );
-
-    logToDB({
-        user_id: foundUser.id,
-        log_type: 'auth',
-        log_message: 'new access token issued'
-    }, false);
 }
 
 export default {

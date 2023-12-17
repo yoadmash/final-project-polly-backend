@@ -26,7 +26,6 @@ usersRouter.route(regex + 'upload').post(
     userController.handleProfilePictureUpload);
 
 usersRouter.route(regex + 'remove_profile_pic').post(userController.handleRemoveProfilePicture);
-usersRouter.route(regex + 'delete').post(userController.handleUserDelete);
 usersRouter.route(regex + 'set_active').post(userController.handleUserActiveStatus);
 usersRouter.route(regex + 'get_polls').get(userController.handleGetUserPolls);
 usersRouter.route(regex + ':id').get(userController.handleGetUserById);

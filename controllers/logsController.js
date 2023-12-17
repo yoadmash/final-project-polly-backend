@@ -12,13 +12,12 @@ const handleGetLogs = async (req, res) => {
             await Log.deleteMany({log_type: log});
             res.sendStatus(200);
         } else {
-            const log_data = await Log.find({ log_type: log }).sort({'logged_at': -1});
+            const log_data = await Log.find({ log_type: log }).select('-_id -log_type').sort({'date_time': -1});
             res.status(log_data.length > 0 ? 200 : 204).json({ content: log_data });
         }
     } else {
-        const logs = await Log.find();
         const log_types = await Log.distinct('log_type');
-        res.json({ logs, log_types });
+        res.json({ log_types });
     }
 
 }
