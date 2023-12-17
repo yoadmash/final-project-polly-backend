@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node server",
+    "vercel-build": "echo build",
     "dev": "nodemon server"
   },
   "keywords": [],
