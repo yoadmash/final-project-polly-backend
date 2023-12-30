@@ -21,6 +21,7 @@
     "express-fileupload": "^1.4.0",
     "jsonwebtoken": "^9.0.1",
     "mongoose": "^7.3.4",
+    "nodemailer": "^6.9.7",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

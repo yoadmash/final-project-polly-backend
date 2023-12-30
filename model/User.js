@@ -36,6 +36,10 @@ const userSchema = new Schema({
         type: String,
         required: false
     },
+    resetPassToken: {
+        type: String,
+        required: false
+    },
     polls_created: {
         type: [],
         required: false
