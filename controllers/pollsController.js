@@ -3,12 +3,26 @@ import { format } from 'date-fns';
 import { logToDB } from '../utils/log.js';
 import { Poll } from "../model/Poll.js";
 import { User } from "../model/User.js";
+import { PollTemplate } from "../model/PollTemplate.js";
 
 import fs from 'fs';
 import path from 'path';
 import dirname_filename from '../utils/dirname_filename.js';
 
 const { __dirname } = dirname_filename(import.meta);
+
+const handleGetTemplates = async (req, res) => {
+    const templates = await PollTemplate.find().select('-fields');
+    res.json({ templates });
+}
+
+const handleGetTemplateByName = async (req, res) => {
+    const { name } = req.params;
+    const template = await PollTemplate.findOne({ name: name }).select('+fields');
+    if (!template) return res.status(404).json({ message: "Template not found" });
+
+    res.json({ template });
+}
 
 const handlePollCreate = async (req, res) => {
     const { title, questions, settings, description, image_path } = JSON.parse(req.body.form_data);
@@ -390,6 +404,8 @@ const handleVisitPoll = async (req, res) => {
 }
 
 export default {
+    handleGetTemplates,
+    handleGetTemplateByName,
     handlePollCreate,
     handlePollDelete,
     handlePollEdit,

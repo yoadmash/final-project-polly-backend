@@ -3,6 +3,7 @@ import fileUpload from 'express-fileupload';
 import authController from '../controllers/authController.js';
 import userController from '../controllers/usersController.js';
 import { verifyJWT } from '../middleware/verifyJWT.js';
+import {verifyResetPass} from '../middleware/verifyResetPass.js';
 import { fileExtLimiter } from '../middleware/fileExtLimiter.js';
 import { filePayLoadExists } from '../middleware/filePayLoadExists.js';
 import { fileSizeLimiter } from '../middleware/fileSizeLimiter.js';
@@ -15,6 +16,8 @@ usersRouter.route(regex + 'auth/register').post(authController.handleRegister);
 usersRouter.route(regex + 'auth/login').post(authController.handleLogin);
 usersRouter.route(regex + 'auth/refresh').get(authController.handleRefreshToken);
 usersRouter.route(regex + 'auth/logout').get(authController.handleLogout);
+usersRouter.route(regex + 'auth/reset-password').post(authController.handleForgotPassword);
+usersRouter.route(regex + 'auth/change-password').post(verifyResetPass, authController.handleChangePassword);
 
 usersRouter.use(verifyJWT);
 

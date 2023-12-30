@@ -10,6 +10,9 @@ const regex = '^/'
 
 pollsRouter.use(verifyJWT);
 
+pollsRouter.route(regex + 'templates').get(pollsController.handleGetTemplates);
+pollsRouter.route(regex + 'templates/:name').get(pollsController.handleGetTemplateByName);
+
 pollsRouter.route(regex + 'create').post(
     fileUpload({ createParentPath: true }),
     fileExtLimiter(['.png', '.jpg', '.jpeg', '.svgz', '.svg']),

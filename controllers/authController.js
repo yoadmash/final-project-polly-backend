@@ -5,6 +5,7 @@ import { v4 as uuid } from 'uuid';
 import { User } from '../model/User.js';
 import { format } from 'date-fns';
 import { logToDB } from '../utils/log.js';
+import { sendEmail } from '../utils/email.js';
 
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
@@ -86,6 +87,7 @@ const handleLogin = async (req, res) => {
                     { expiresIn: '7d' }
                 );
                 foundUser.refreshToken = refreshToken;
+                foundUser.resetPassToken = '';
                 await foundUser.save();
                 res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000, secure: true, sameSite: 'None' }); //secure: true, sameSite: 'None'
                 const fullname = (foundUser.firstname === foundUser.lastname) ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}` : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
@@ -146,8 +148,8 @@ const handleRefreshToken = async (req, res) => {
                 { expiresIn: '30m' }
             );
             const fullname = (foundUser.firstname === foundUser.lastname)
-            ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}`
-            : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
+                ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}`
+                : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
             res.json({
                 userData: {
                     userId: foundUser.id,
@@ -169,9 +171,89 @@ const handleRefreshToken = async (req, res) => {
     );
 }
 
+const handleForgotPassword = async (req, res) => {
+    const { emailAddress } = req.body;
+    const foundUser = await User.findOne({ email: emailAddress });
+
+    if (!foundUser) return res.status(404).json({ message: 'User not found' });
+
+    let resetPassToken = ''
+    try {
+        resetPassToken = jwt.sign(
+            { "id": foundUser.id },
+            process.env.RESET_PASS_TOKEN_SECRET,
+            { expiresIn: "10m" }
+        );
+
+        foundUser.resetPassToken = resetPassToken;
+        foundUser.save();
+
+    } catch (err) {
+        return res.status(400).json({ message: 'Failed to issue reset password token' });
+    }
+
+    const resetPassLink = `<a href=${process.env.FRONT_URL + `/auth/reset_password?t=${resetPassToken}`}>Reset Password</a>`
+
+    const emailMessage = `
+    <div style="font-size: 20px; text-align: center;">
+        <p>
+            Hi ${foundUser.username},<br>
+            A reset password request as been issued for you.<br>
+            Please follow the link below to reset your password (the link is valid for the next 10 minutes).<br>
+            ${resetPassLink}
+        </p>
+    </div>
+    `;
+
+    sendEmail({
+        "from": "Polly <yoad.studies@gmail.com>",
+        "to": emailAddress,
+        "subject": "Reset Password Request",
+        "html": emailMessage
+    });
+
+    logToDB({
+        user_id: foundUser.id,
+        user_name: foundUser.username,
+        log_type: 'auth',
+        log_message: 'reset password request'
+    }, false);
+
+    res.json({ message: 'reset password email has been sent' });
+}
+
+const handleChangePassword = async (req, res) => {
+    const { resetPassToken, password, matchPassword } = req.body;
+
+    const foundUser = await User.findById(req.user).select('password resetPassToken');
+    if (!foundUser) return res.status(404).json({ message: 'User not found' });
+    if(foundUser.resetPassToken !== resetPassToken) return res.status(401).json({message: 'Link expired or already used to change the password'});
+    if (password !== matchPassword) return res.status(400).json({ message: 'Password mismatch' });
+
+    bcrypt.compare(password, foundUser.password, async (err, same) => {
+        if(err) return res.status(500).json(err);
+        if (same) {
+            return res.status(409).json({ message: 'New password can\'t match current password' });
+        } else {
+            try {
+                const hashedPassword = await bcrypt.hash(password, 10);
+                foundUser.password = hashedPassword;
+                foundUser.resetPassToken = '';
+                foundUser.save();
+            } catch (error) {
+                res.status(500).json(error);
+            }
+        }
+        res.json({ message: 'Password changed' });
+    })
+
+}
+
 export default {
     handleRegister,
     handleLogin,
     handleLogout,
     handleRefreshToken,
+    handleForgotPassword,
+    handleChangePassword
 }
