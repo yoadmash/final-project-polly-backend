@@ -26,9 +26,9 @@ usersRouter.route(regex + 'upload').post(
     filePayLoadExists,
     fileExtLimiter(['.png', '.jpg', '.jpeg', '.svgz', '.svg']),
     fileSizeLimiter,
-    userController.handleProfilePictureUpload);
+    userController.handleProfilePictureUploadExternal);
 
-usersRouter.route(regex + 'remove_profile_pic').post(userController.handleRemoveProfilePicture);
+usersRouter.route(regex + 'remove_profile_pic').post(userController.handleRemoveProfilePictureExternal);
 usersRouter.route(regex + 'set_active').post(userController.handleUserActiveStatus);
 usersRouter.route(regex + 'get_polls').get(userController.handleGetUserPolls);
 usersRouter.route(regex + ':id').get(userController.handleGetUserById);

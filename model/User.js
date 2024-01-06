@@ -56,6 +56,10 @@ const userSchema = new Schema({
         type: String,
         required: false
     },
+    profile_pic_uuid: {
+        type: String,
+        required: false
+    },
     active: {
         type: Boolean,
         default: true,

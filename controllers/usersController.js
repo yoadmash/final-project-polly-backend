@@ -1,3 +1,5 @@
+import { UploadClient } from "@uploadcare/upload-client";
+import { deleteFile, UploadcareSimpleAuthSchema } from "@uploadcare/rest-client";
 import { User } from "../model/User.js";
 import { logToDB } from '../utils/log.js';
 import fs from 'fs';
@@ -5,6 +7,71 @@ import path from 'path';
 import dirname_filename from '../utils/dirname_filename.js';
 
 const { __dirname } = dirname_filename(import.meta);
+
+const handleProfilePictureUploadExternal = async (req, res) => {
+    const foundUser = await User.findById(req.user);
+    if (foundUser.profile_pic_path && foundUser.profile_pic_uuid) {
+        try {
+            await deleteFile({ uuid: foundUser.profile_pic_uuid }, {
+                authSchema: new UploadcareSimpleAuthSchema({
+                    publicKey: process.env.IMG_SERVICE_KEY,
+                    secretKey: process.env.IMG_SERVICE_SECRET,
+                })
+            });
+        } catch {
+            logToDB({
+                user_id: foundUser.id,
+                user_name: foundUser.username,
+                log_message: `unable to delete current profile picture`,
+                log_type: 'users'
+            }, true);
+        }
+    }
+    const client = new UploadClient({ publicKey: process.env.IMG_SERVICE_KEY });
+    const fileToUpload = Object.values(req.files)[0].data;
+    try {
+        const file = await client.uploadFile(fileToUpload, { fileName: req.user });
+        foundUser.profile_pic_path = file.cdnUrl + '-/preview/';
+        foundUser.profile_pic_uuid = file.uuid;
+        foundUser.save();
+    } catch (err) {
+        logToDB({
+            user_id: foundUser.id,
+            user_name: foundUser.username,
+            log_message: `unable to upload profile picture`,
+            log_type: 'users'
+        }, true);
+        return res.status(500).json({ message: 'Unable to upload profile picture ' });
+    }
+    return res.json({ message: 'file uploaded', imgPath: foundUser.profile_pic_path });
+}
+
+const handleRemoveProfilePictureExternal = async (req, res) => {
+    const foundUser = await User.findById(req.user);
+    if (!foundUser.profile_pic_path || !foundUser.profile_pic_uuid) {
+        return res.status(409).json({ message: "Profile picture not found" });
+    }
+    try {
+        await deleteFile({ uuid: foundUser.profile_pic_uuid }, {
+            authSchema: new UploadcareSimpleAuthSchema({
+                publicKey: process.env.IMG_SERVICE_KEY,
+                secretKey: process.env.IMG_SERVICE_SECRET,
+            })
+        });
+        foundUser.profile_pic_path = '';
+        foundUser.profile_pic_uuid = '';
+        await foundUser.save();
+    } catch (err) {
+        logToDB({
+            user_id: foundUser.id,
+            user_name: foundUser.username,
+            log_message: `unable to remove profile picture`,
+            log_type: 'users'
+        }, true);
+        return res.status(500).json({ message: 'Unable to remove profile picture ' });
+    }
+    res.json({ message: 'picture deleted' });
+}
 
 const handleProfilePictureUpload = async (req, res) => {
     const foundUser = await User.findById(req.user);
@@ -135,6 +202,8 @@ const handleGetUserPolls = async (req, res) => {
 }
 
 export default {
+    handleProfilePictureUploadExternal,
+    handleRemoveProfilePictureExternal,
     handleProfilePictureUpload,
     handleRemoveProfilePicture,
     handleUserActiveStatus,

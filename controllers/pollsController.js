@@ -1,3 +1,5 @@
+import { UploadClient } from "@uploadcare/upload-client";
+import { deleteFile, UploadcareSimpleAuthSchema } from "@uploadcare/rest-client";
 import { v4 as uuid } from 'uuid';
 import { format } from 'date-fns';
 import { logToDB } from '../utils/log.js';
@@ -53,10 +55,6 @@ const handlePollCreate = async (req, res) => {
         user.polls_created.push(newPoll.id);
         user.save();
 
-        res.status(201).json({
-            message: 'Poll created',
-            poll: newPoll
-        });
         logToDB({
             poll_id: newPoll.id,
             poll_title: newPoll.title,
@@ -65,25 +63,34 @@ const handlePollCreate = async (req, res) => {
         }, false);
 
         if (req.files) {
-            const file = Object.values(req.files)[0];
-            const fileName = newPoll.id;
-            const extName = path.extname(file.name);
-            const fullFileName = `${fileName}${extName}`;
-            const filePath = path.join(__dirname, '..', 'public', 'polls_pics', fullFileName);
-            const pollFilePath = `/polls_pics/${fullFileName}`;
-            file.mv(filePath, async (err) => {
-                if (err) return res.status(500).json({ message: 'something is wrong, unable to upload' });
-                try {
-                    const createdPoll = await Poll.findById(newPoll.id);
-                    createdPoll.image_path = pollFilePath;
+            const client = new UploadClient({ publicKey: process.env.IMG_SERVICE_KEY });
+            const fileToUpload = Object.values(req.files)[0].data;
+            const createdPoll = await Poll.findById(newPoll?.id);
+            if (createdPoll) {
+                const file = await client.uploadFile(fileToUpload, { fileName: createdPoll.id });
+                if (!file?.cdnUrl || !file?.uuid) {
+                    logToDB({
+                        poll_id: createdPoll.id,
+                        poll_title: createdPoll.title,
+                        log_message: `unable to upload poll image`,
+                        log_type: 'polls'
+                    }, true);
+                } else {
+                    createdPoll.image_path = file.cdnUrl + '-/preview/';
+                    createdPoll.image_uuid = file.uuid;
                     await createdPoll.save();
-                } catch (err) {
-                    res.status(500).json({ message: err.errors });
                 }
-            });
+            }
         }
+
+        res.status(201).json({
+            message: 'Poll created',
+            poll: newPoll
+        });
+
     } catch (err) {
-        return res.status(500).json({ message: err });
+        console.log(err.message);
+        return res.status(500).json({ message: "Something went wrong while trying to create this poll" });
     }
 }
 
@@ -124,18 +131,26 @@ const handlePollDelete = async (req, res) => {
         return res.sendStatus(200);
     }
 
-    if (foundPoll.image_path?.length > 0) {
-        const fullPath = path.join(__dirname, '../public', foundPoll.image_path);
-        fs.unlink(fullPath, async (err) => {
-            if (err) {
-                logToDB({
-                    poll_id: foundPoll.id,
-                    poll_title: foundPoll.title,
-                    log_message: `unable to delete poll image`,
-                    log_type: 'polls'
-                }, true);
-            }
-        });
+    if (foundPoll.image_path?.length > 0 && foundPoll.image_uuid?.length > 0) {
+        try {
+            await deleteFile({ uuid: foundPoll.image_uuid }, {
+                authSchema: new UploadcareSimpleAuthSchema({
+                    publicKey: process.env.IMG_SERVICE_KEY,
+                    secretKey: process.env.IMG_SERVICE_SECRET,
+                })
+            });
+            foundPoll.image_path = '';
+            foundPoll.image_uuid = '';
+            await foundPoll.save();
+        } catch (err) {
+            console.log(err.message);
+            logToDB({
+                poll_id: foundPoll.id,
+                poll_title: foundPoll.title,
+                log_message: `unable to delete poll image`,
+                log_type: 'polls'
+            }, true);
+        }
     }
 
     const usersAnswered = [];
@@ -157,7 +172,7 @@ const handlePollDelete = async (req, res) => {
                     logToDB({
                         poll_id: foundPoll.id,
                         poll_title: foundPoll.title,
-                        log_message: `unable to delete poll fro\npoll_answered of user: ${user.user_name} (${user.user_id})`,
+                        log_message: `unable to delete poll from\npoll_answered of user: ${user.user_name} (${user.user_id})`,
                         log_type: 'polls'
                     }, true);
                 }
@@ -204,7 +219,7 @@ const handlePollEdit = async (req, res) => {
     const pollExist = polls.find(poll => poll.title === title && poll.id !== foundPoll.id);
     if (pollExist) return res.status(409).json({ message: `A poll with title '${title}' already exists` });
 
-    let { delete_image, old_image_path } = req.body;
+    let { delete_image, old_image } = req.body;
 
     try {
         foundPoll.title = title;
@@ -213,55 +228,41 @@ const handlePollEdit = async (req, res) => {
         foundPoll.settings = settings;
 
         if (req.files) {
-            const file = Object.values(req.files)[0];
-            const fileName = foundPoll.id;
-            const extName = path.extname(file.name);
-            const fullFileName = `${fileName}${extName}`;
-            const filePath = path.join(__dirname, '..', 'public', 'polls_pics', fullFileName);
-            const pollFilePath = `/polls_pics/${fullFileName}`;
-            await file.mv(filePath, async (err) => {
-                if (err) {
-                    logToDB({
-                        poll_id: foundPoll.id,
-                        poll_title: foundPoll.title,
-                        log_message: `unable to upload poll image`,
-                        log_type: 'polls'
-                    }, true);
-                }
-            });
-            logToDB({
-                poll_id: foundPoll.id,
-                poll_title: foundPoll.title,
-                log_message: `poll image uploaded`,
-                log_type: 'polls'
-            }, false);
-            foundPoll.image_path = pollFilePath;
-        }
-
-        if (delete_image === 'true' || (old_image_path.length > 0 && old_image_path !== foundPoll.image_path)) {
-            const fullPath = path.join(__dirname, '../public', old_image_path);
-            fs.unlink(fullPath, async (err) => {
-                if (err) {
-                    console.log(err);
-                    console.log(old_image_path);
-                    logToDB({
-                        poll_id: foundPoll.id,
-                        poll_title: foundPoll.title,
-                        log_message: `unable to delete poll image`,
-                        log_type: 'polls'
-                    }, true);
-                };
+            const client = new UploadClient({ publicKey: process.env.IMG_SERVICE_KEY });
+            const fileToUpload = Object.values(req.files)[0].data;
+            const file = await client.uploadFile(fileToUpload, { fileName: foundPoll.id });
+            if (!file?.cdnUrl || !file?.uuid) {
                 logToDB({
                     poll_id: foundPoll.id,
                     poll_title: foundPoll.title,
-                    log_message: `poll image removed`,
+                    log_message: `unable to upload poll image`,
+                    log_type: 'polls'
+                }, true);
+            } else {
+                foundPoll.image_path = file.cdnUrl + '-/preview/';
+                foundPoll.image_uuid = file.uuid;
+                await foundPoll.save();
+                logToDB({
+                    poll_id: foundPoll.id,
+                    poll_title: foundPoll.title,
+                    log_message: `poll image changed`,
                     log_type: 'polls'
                 }, false);
+            }
+        }
+
+        if (delete_image === 'true' || (old_image.length > 0 && old_image !== foundPoll.image_uuid)) {
+            await deleteFile({ uuid: old_image }, {
+                authSchema: new UploadcareSimpleAuthSchema({
+                    publicKey: process.env.IMG_SERVICE_KEY,
+                    secretKey: process.env.IMG_SERVICE_SECRET,
+                })
             });
         }
 
         if (delete_image === 'true') {
             foundPoll.image_path = '';
+            foundPoll.image_uuid = '';
         }
 
         await foundPoll.save();
@@ -271,7 +272,8 @@ const handlePollEdit = async (req, res) => {
         });
 
     } catch (err) {
-        res.status(500).json({ message: err.errors });
+        console.log(err.message);
+        res.status(500).json({ message: "Something went wrong while trying to edit this poll" });
     }
 }
 
@@ -371,8 +373,8 @@ const handleGetPollById = async (req, res) => {
     if (!id) return res.status(400).json({ message: 'Missing poll id' });
 
     const selectString = (include_answers === 'true')
-        ? 'owner title description image_path creation_date questions settings answers'
-        : 'owner title description image_path creation_date questions settings';
+        ? 'owner title description image_path image_uuid creation_date questions settings answers'
+        : 'owner title description image_path image_uuid creation_date questions settings';
     const foundPoll = await Poll.findById(id).select(selectString);
     if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${id}` });
 
