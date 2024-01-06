@@ -12,6 +12,10 @@ const templateSchema = new Schema({
     fields: {
         type: Object,
         required: true
+    },
+    valid: {
+        type: Boolean,
+        required: false
     }
 }, { versionKey: false });
 

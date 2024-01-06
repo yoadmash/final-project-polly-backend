@@ -26,6 +26,10 @@ const pollSchema = new Schema({
         type: String,
         required: false,
     },
+    image_uuid: {
+        type: String,
+        required: false
+    },
     creation_date: {
         type: String,
         required: true
