@@ -18,11 +18,11 @@ const handleProfilePictureUploadExternal = async (req, res) => {
                     secretKey: process.env.IMG_SERVICE_SECRET,
                 })
             });
-        } catch {
+        } catch (err) {
             logToDB({
                 user_id: foundUser.id,
                 user_name: foundUser.username,
-                log_message: `unable to delete current profile picture`,
+                log_message: `unable to remove old profile picture (${foundUser.profile_pic_uuid}) from storage, error: ${err.message}`,
                 log_type: 'users'
             }, true);
         }
@@ -34,11 +34,17 @@ const handleProfilePictureUploadExternal = async (req, res) => {
         foundUser.profile_pic_path = file.cdnUrl + '-/preview/';
         foundUser.profile_pic_uuid = file.uuid;
         foundUser.save();
+        logToDB({
+            user_id: foundUser.id,
+            user_name: foundUser.username,
+            log_message: `profile picture uploaded`,
+            log_type: 'users'
+        }, false);
     } catch (err) {
         logToDB({
             user_id: foundUser.id,
             user_name: foundUser.username,
-            log_message: `unable to upload profile picture`,
+            log_message: `unable to upload profile picture, error: ${err.message}`,
             log_type: 'users'
         }, true);
         return res.status(500).json({ message: 'Unable to upload profile picture ' });
@@ -61,11 +67,17 @@ const handleRemoveProfilePictureExternal = async (req, res) => {
         foundUser.profile_pic_path = '';
         foundUser.profile_pic_uuid = '';
         await foundUser.save();
+        logToDB({
+            user_id: foundUser.id,
+            user_name: foundUser.username,
+            log_message: `profile picture removed`,
+            log_type: 'users'
+        }, false);
     } catch (err) {
         logToDB({
             user_id: foundUser.id,
             user_name: foundUser.username,
-            log_message: `unable to remove profile picture`,
+            log_message: `unable to remove old profile picture (${foundUser.profile_pic_uuid}) from storage, error: ${err.message}`,
             log_type: 'users'
         }, true);
         return res.status(500).json({ message: 'Unable to remove profile picture ' });
