@@ -1,6 +1,7 @@
 import express from 'express';
 import pollsController from '../controllers/pollsController.js';
 import { verifyJWT } from '../middleware/verifyJWT.js';
+import { checkActive } from '../middleware/checkActive.js';
 import fileUpload from 'express-fileupload';
 import { fileExtLimiter } from '../middleware/fileExtLimiter.js';
 import { fileSizeLimiter } from '../middleware/fileSizeLimiter.js';
@@ -8,7 +9,7 @@ import { fileSizeLimiter } from '../middleware/fileSizeLimiter.js';
 const pollsRouter = express.Router();
 const regex = '^/'
 
-pollsRouter.use(verifyJWT);
+pollsRouter.use(verifyJWT, checkActive);
 
 pollsRouter.route(regex + 'templates').get(pollsController.handleGetTemplates);
 pollsRouter.route(regex + 'templates/:name').get(pollsController.handleGetTemplateByName);

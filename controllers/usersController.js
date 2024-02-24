@@ -53,7 +53,8 @@ const handleProfilePictureUploadExternal = async (req, res) => {
 }
 
 const handleRemoveProfilePictureExternal = async (req, res) => {
-    const foundUser = await User.findById(req.user);
+    const { by_admin, userId } = req.body;
+    const foundUser = await User.findById((by_admin) ? userId : req.user);
     if (!foundUser.profile_pic_path || !foundUser.profile_pic_uuid) {
         return res.status(409).json({ message: "Profile picture not found" });
     }
@@ -169,14 +170,17 @@ const handleRemoveProfilePicture = async (req, res) => {
 }
 
 const handleUserActiveStatus = async (req, res) => {
-    const { state } = req.query;
-    const foundUser = await User.findById(req.user);
+    const { state, by_admin } = req.query;
+    const { userId } = req.body;
+    const foundUser = await User.findById((by_admin) ? userId : req.user);
 
     try {
         foundUser.active = state;
         foundUser.refreshToken = '';
         await foundUser.save();
-        res.clearCookie('jwt', { httpOnly: true, sameSite: 'None', secure: true }); //sameSite: 'None', secure: true
+        if (!by_admin) {
+            res.clearCookie('jwt', { httpOnly: true, sameSite: 'None', secure: true }); //sameSite: 'None', secure: true
+        }
         res.status(200).json({ message: `${foundUser.username} has been ${(Number(state)) ? 'activated' : 'deactivated'}` });
         logToDB({
             user_id: foundUser.id,
@@ -185,7 +189,30 @@ const handleUserActiveStatus = async (req, res) => {
             log_type: 'users'
         }, false);
     } catch (err) {
-        res.status(500).json({ message: err.errors });
+        res.status(500).json({ message: err.message });
+    }
+}
+
+const handleUserAdminStatus = async (req, res) => {
+    const { userId } = req.body;
+
+    const foundUser = await User.findById(req.user);
+    if (!foundUser.admin) return res.status(401).json({ message: "You're not an Admin!" });
+
+    const setUser = await User.findById(userId);
+    if (!setUser) return res.status(404).json({ message: 'User not found' });
+    try {
+        setUser.admin = !setUser.admin;
+        await setUser.save();
+        res.status(200).json({ message: (setUser.admin) ? 'admin permission grannted' : 'admin permission revoked' });
+        logToDB({
+            user_id: setUser.id,
+            user_name: setUser.username,
+            log_message: (setUser.admin) ? `admin permission granted by ${foundUser.username}` : `admin permission revoked by ${foundUser.username}`,
+            log_type: 'users'
+        }, false);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 }
 
@@ -197,6 +224,15 @@ const handleGetUserById = async (req, res) => {
     if (!foundUser) return res.status(404).json({ message: `No user match this id: ${id}` });
 
     res.status(200).json({ foundUser });
+}
+
+const handleGetAllUsers = async (req, res) => {
+    const foundUser = await User.findById(req.user);
+    if (!foundUser.admin) return res.sendStatus(401);
+
+    // const allUsers = await User.find({ _id: req.user });
+    const allUsers = await User.find({ _id: { $not: { $regex: `${req.user}` } } });
+    res.status(200).json({ allUsers });
 }
 
 const handleGetUserPolls = async (req, res) => {
@@ -219,6 +255,8 @@ export default {
     handleProfilePictureUpload,
     handleRemoveProfilePicture,
     handleUserActiveStatus,
+    handleUserAdminStatus,
     handleGetUserById,
+    handleGetAllUsers,
     handleGetUserPolls,
 };

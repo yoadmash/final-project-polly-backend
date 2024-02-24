@@ -7,14 +7,9 @@ import { Poll } from "../model/Poll.js";
 import { User } from "../model/User.js";
 import { PollTemplate } from "../model/PollTemplate.js";
 
-import fs from 'fs';
-import path from 'path';
-import dirname_filename from '../utils/dirname_filename.js';
-
-const { __dirname } = dirname_filename(import.meta);
-
 const handleGetTemplates = async (req, res) => {
-    const templates = await PollTemplate.find().select('-fields');
+    const { with_fields } = req.query;
+    const templates = await PollTemplate.find().select((with_fields === 'true') ? '+fields' : '-fields');
     res.json({ templates });
 }
 
