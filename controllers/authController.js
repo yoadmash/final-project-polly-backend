@@ -86,18 +86,22 @@ const handleLogin = async (req, res) => {
                     process.env.REFRESH_TOKEN_SECRET,
                     { expiresIn: '7d' }
                 );
-                foundUser.refreshToken = refreshToken;
+                foundUser.last_login = format(Date.now(), 'dd/MM/yyyy, HH:mm:ss'),
+                    foundUser.refreshToken = refreshToken;
                 foundUser.resetPassToken = '';
                 await foundUser.save();
                 res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000, secure: true, sameSite: 'None' }); //secure: true, sameSite: 'None'
-                const fullname = (foundUser.firstname === foundUser.lastname) ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}` : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
+                const fullname = (foundUser.firstname === foundUser.lastname)
+                    ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}`
+                    : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
                 res.json({
                     message: `Login Complete`, userData: {
                         userId: foundUser.id,
                         fullname: fullname,
                         accessToken: accessToken,
                         admin: foundUser.admin,
-                        profile_pic_path: foundUser.profile_pic_path
+                        profile_pic_path: foundUser.profile_pic_path,
+                        polls_created: foundUser.polls_created
                     }
                 });
                 logToDB({
@@ -145,7 +149,7 @@ const handleRefreshToken = async (req, res) => {
             const accessToken = jwt.sign(
                 { "id": decodedJWT.id },
                 process.env.ACCESS_TOKEN_SECRET,
-                { expiresIn: '30m' }
+                { expiresIn: '15m' }
             );
             const fullname = (foundUser.firstname === foundUser.lastname)
                 ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}`
@@ -157,16 +161,17 @@ const handleRefreshToken = async (req, res) => {
                     fullname: fullname,
                     accessToken: accessToken,
                     admin: foundUser.admin,
-                    profile_pic_path: foundUser.profile_pic_path
+                    profile_pic_path: foundUser.profile_pic_path,
+                    polls_created: foundUser.polls_created
                 }
             });
 
-            logToDB({
-                user_id: foundUser.id,
-                user_name: foundUser.username,
-                log_type: 'auth',
-                log_message: 'new access token issued'
-            }, false);
+            // logToDB({
+            //     user_id: foundUser.id,
+            //     user_name: foundUser.username,
+            //     log_type: 'auth',
+            //     log_message: 'new access token issued'
+            // }, false);
         }
     );
 }
@@ -227,11 +232,11 @@ const handleChangePassword = async (req, res) => {
 
     const foundUser = await User.findById(req.user).select('password resetPassToken');
     if (!foundUser) return res.status(404).json({ message: 'User not found' });
-    if(foundUser.resetPassToken !== resetPassToken) return res.status(401).json({message: 'Link expired or already used to change the password'});
+    if (foundUser.resetPassToken !== resetPassToken) return res.status(401).json({ message: 'Link expired or already used to change the password' });
     if (password !== matchPassword) return res.status(400).json({ message: 'Password mismatch' });
 
     bcrypt.compare(password, foundUser.password, async (err, same) => {
-        if(err) return res.status(500).json(err);
+        if (err) return res.status(500).json(err);
         if (same) {
             return res.status(409).json({ message: 'New password can\'t match current password' });
         } else {

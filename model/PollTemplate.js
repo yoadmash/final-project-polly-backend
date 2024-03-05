@@ -3,9 +3,8 @@ import mongoose, { Schema } from "mongoose";
 const templateSchema = new Schema({
     _id: {
         type: String,
-        select: false
     },
-    name: {
+    title: {
         type: String,
         required: true
     },
@@ -13,7 +12,7 @@ const templateSchema = new Schema({
         type: Object,
         required: true
     },
-    valid: {
+    show: {
         type: Boolean,
         required: false
     }

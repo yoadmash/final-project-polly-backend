@@ -5,6 +5,7 @@ import { logToDB } from '../utils/log.js';
 import fs from 'fs';
 import path from 'path';
 import dirname_filename from '../utils/dirname_filename.js';
+import { Poll } from "../model/Poll.js";
 
 const { __dirname } = dirname_filename(import.meta);
 
@@ -53,7 +54,8 @@ const handleProfilePictureUploadExternal = async (req, res) => {
 }
 
 const handleRemoveProfilePictureExternal = async (req, res) => {
-    const foundUser = await User.findById(req.user);
+    const { by_admin, userId } = req.body;
+    const foundUser = await User.findById((by_admin) ? userId : req.user);
     if (!foundUser.profile_pic_path || !foundUser.profile_pic_uuid) {
         return res.status(409).json({ message: "Profile picture not found" });
     }
@@ -169,14 +171,17 @@ const handleRemoveProfilePicture = async (req, res) => {
 }
 
 const handleUserActiveStatus = async (req, res) => {
-    const { state } = req.query;
-    const foundUser = await User.findById(req.user);
+    const { state, by_admin } = req.query;
+    const { userId } = req.body;
+    const foundUser = await User.findById((by_admin) ? userId : req.user);
 
     try {
         foundUser.active = state;
         foundUser.refreshToken = '';
         await foundUser.save();
-        res.clearCookie('jwt', { httpOnly: true, sameSite: 'None', secure: true }); //sameSite: 'None', secure: true
+        if (!by_admin) {
+            res.clearCookie('jwt', { httpOnly: true, sameSite: 'None', secure: true }); //sameSite: 'None', secure: true
+        }
         res.status(200).json({ message: `${foundUser.username} has been ${(Number(state)) ? 'activated' : 'deactivated'}` });
         logToDB({
             user_id: foundUser.id,
@@ -185,7 +190,30 @@ const handleUserActiveStatus = async (req, res) => {
             log_type: 'users'
         }, false);
     } catch (err) {
-        res.status(500).json({ message: err.errors });
+        res.status(500).json({ message: err.message });
+    }
+}
+
+const handleUserAdminStatus = async (req, res) => {
+    const { userId } = req.body;
+
+    const foundUser = await User.findById(req.user);
+    if (!foundUser.admin) return res.status(401).json({ message: "You're not an Admin!" });
+
+    const setUser = await User.findById(userId);
+    if (!setUser) return res.status(404).json({ message: 'User not found' });
+    try {
+        setUser.admin = !setUser.admin;
+        await setUser.save();
+        res.status(200).json({ message: (setUser.admin) ? 'admin permission grannted' : 'admin permission revoked' });
+        logToDB({
+            user_id: setUser.id,
+            user_name: setUser.username,
+            log_message: (setUser.admin) ? `admin permission granted by ${foundUser.username}` : `admin permission revoked by ${foundUser.username}`,
+            log_type: 'users'
+        }, false);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 }
 
@@ -199,12 +227,22 @@ const handleGetUserById = async (req, res) => {
     res.status(200).json({ foundUser });
 }
 
+const handleGetAllUsers = async (req, res) => {
+    const foundUser = await User.findById(req.user);
+    if (!foundUser.admin) return res.sendStatus(401);
+
+    const allUsers = await User.find();
+    res.status(200).json({ allUsers });
+}
+
 const handleGetUserPolls = async (req, res) => {
     const foundUser = await User.findById(req.user);
     if (!foundUser) return res.status(404).json({ message: `No user match this id: ${req.user}` });
-    const polls_created = JSON.parse(JSON.stringify(foundUser.polls_created));
-    const polls_answered = JSON.parse(JSON.stringify(foundUser.polls_answered));
-    const polls_visited = JSON.parse(JSON.stringify(foundUser.polls_visited));
+
+    const polls_created = await returnOnlyExistsPolls(foundUser.polls_created);
+    const polls_answered = await returnOnlyExistsPolls(foundUser.polls_answered);
+    const polls_visited = await returnOnlyExistsPolls(foundUser.polls_visited);
+
     const polls = {
         created: [...polls_created],
         answered: [...polls_answered],
@@ -213,12 +251,38 @@ const handleGetUserPolls = async (req, res) => {
     res.status(200).json(polls);
 }
 
+const returnOnlyExistsPolls = async (originalArr) => {
+    const filteredArr = [];
+
+    if (originalArr.length > 0) {
+        const promise_all = [];
+
+        originalArr.forEach((id) => {
+            promise_all.push(Promise.resolve(Poll.exists({ _id: id })));
+        });
+
+        await Promise.all(promise_all)
+            .then((res) => {
+                res.forEach(result => {
+                    if (result) {
+                        filteredArr.push(result._id);
+                    }
+                })
+            })
+            .catch((err) => console.log(err));
+    }
+
+    return filteredArr;
+}
+
 export default {
     handleProfilePictureUploadExternal,
     handleRemoveProfilePictureExternal,
     handleProfilePictureUpload,
     handleRemoveProfilePicture,
     handleUserActiveStatus,
+    handleUserAdminStatus,
     handleGetUserById,
+    handleGetAllUsers,
     handleGetUserPolls,
 };

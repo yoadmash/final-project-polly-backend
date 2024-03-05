@@ -74,6 +74,10 @@ const userSchema = new Schema({
         type: String,
         required: true
     },
+    last_login: {
+        type: String,
+        required: false
+    }
 }, {versionKey: false});
 
 export const User = mongoose.model('User', userSchema); 
