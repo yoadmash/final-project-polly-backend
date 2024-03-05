@@ -5,6 +5,7 @@ import { logToDB } from '../utils/log.js';
 import fs from 'fs';
 import path from 'path';
 import dirname_filename from '../utils/dirname_filename.js';
+import { Poll } from "../model/Poll.js";
 
 const { __dirname } = dirname_filename(import.meta);
 
@@ -230,23 +231,48 @@ const handleGetAllUsers = async (req, res) => {
     const foundUser = await User.findById(req.user);
     if (!foundUser.admin) return res.sendStatus(401);
 
-    // const allUsers = await User.find({ _id: req.user });
-    const allUsers = await User.find({ _id: { $not: { $regex: `${req.user}` } } });
+    const allUsers = await User.find();
     res.status(200).json({ allUsers });
 }
 
 const handleGetUserPolls = async (req, res) => {
     const foundUser = await User.findById(req.user);
     if (!foundUser) return res.status(404).json({ message: `No user match this id: ${req.user}` });
-    const polls_created = JSON.parse(JSON.stringify(foundUser.polls_created));
-    const polls_answered = JSON.parse(JSON.stringify(foundUser.polls_answered));
-    const polls_visited = JSON.parse(JSON.stringify(foundUser.polls_visited));
+
+    const polls_created = await returnOnlyExistsPolls(foundUser.polls_created);
+    const polls_answered = await returnOnlyExistsPolls(foundUser.polls_answered);
+    const polls_visited = await returnOnlyExistsPolls(foundUser.polls_visited);
+
     const polls = {
         created: [...polls_created],
         answered: [...polls_answered],
         visited: [...polls_visited],
     }
     res.status(200).json(polls);
+}
+
+const returnOnlyExistsPolls = async (originalArr) => {
+    const filteredArr = [];
+
+    if (originalArr.length > 0) {
+        const promise_all = [];
+
+        originalArr.forEach((id) => {
+            promise_all.push(Promise.resolve(Poll.exists({ _id: id })));
+        });
+
+        await Promise.all(promise_all)
+            .then((res) => {
+                res.forEach(result => {
+                    if (result) {
+                        filteredArr.push(result._id);
+                    }
+                })
+            })
+            .catch((err) => console.log(err));
+    }
+
+    return filteredArr;
 }
 
 export default {

@@ -12,7 +12,7 @@ const handleGetLogs = async (req, res) => {
             await Log.deleteMany({log_type: log});
             res.sendStatus(200);
         } else {
-            const log_data = await Log.find({ log_type: log }).select('-_id -log_type').sort({'date_time': -1});
+            const log_data = (await Log.find({ log_type: log }).select('-_id -log_type')).reverse();
             res.status(log_data.length > 0 ? 200 : 204).json({ content: log_data });
         }
     } else {

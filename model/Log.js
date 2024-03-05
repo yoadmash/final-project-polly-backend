@@ -20,6 +20,12 @@ const logSchema = new Schema({
     poll_title: {
         type: String,
     },
+    template_id: {
+        type: String,
+    },
+    template_title: {
+        type: String,
+    },
     log_message: {
         type: String,
         required: true
