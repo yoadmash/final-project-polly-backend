@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import cookie from 'cookie';
 dotenv.config();
 
 import { v4 as uuid } from 'uuid';
@@ -90,7 +91,15 @@ const handleLogin = async (req, res) => {
                     foundUser.refreshToken = refreshToken;
                 foundUser.resetPassToken = '';
                 await foundUser.save();
-                res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 * 7, secure: true, sameSite: 'None', partitioned: true }); //secure: true, sameSite: 'None'
+                // res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 * 7, secure: true, sameSite: 'None', partitioned: true }); //secure: true, sameSite: 'None'
+                res.setHeader('Set-Cookie', cookie.serialize('jwt', refreshToken, {
+                    path: '/',
+                    httpOnly: true,
+                    maxAge: 24 * 60 * 60 * 7,
+                    secure: true,
+                    sameSite: 'None',
+                    partitioned: true
+                }));
                 const fullname = (foundUser.firstname === foundUser.lastname)
                     ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}`
                     : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
@@ -118,13 +127,12 @@ const handleLogin = async (req, res) => {
 }
 
 const handleLogout = async (req, res) => {
-    const refreshToken = req.cookies?.jwt;
+    const refreshToken = cookie.parse(req.headers.cookie || '')?.jwt;
     const foundUser = await User.findOne({ refreshToken: refreshToken });
     if (foundUser) {
         foundUser.refreshToken = '';
         await foundUser.save();
     }
-    res.clearCookie('jwt', { httpOnly: true, secure: true, sameSite: 'None' }); //secure: true, sameSite: 'None'
     res.sendStatus(204);
     logToDB({
         user_id: foundUser?.id,
@@ -136,7 +144,7 @@ const handleLogout = async (req, res) => {
 }
 
 const handleRefreshToken = async (req, res) => {
-    const refreshToken = req.cookies?.jwt;
+    const refreshToken = cookie.parse(req.headers.cookie || '')?.jwt;
     if (!refreshToken) return res.sendStatus(401);
     const foundUser = await User.findOne({ refreshToken: refreshToken });
     if (!foundUser) return res.sendStatus(401);

@@ -2,7 +2,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
-import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { corsOptions } from './config/corsOptions.js';
 import { connectDB } from './config/dbConnect.js';
@@ -19,7 +18,6 @@ await connectDB();
 
 //middleware
 app.use(credentials);
-app.use(cookieParser());
 app.use(cors(corsOptions));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
