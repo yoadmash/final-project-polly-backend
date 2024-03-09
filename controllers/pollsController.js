@@ -16,7 +16,7 @@ const handleGetTemplates = async (req, res) => {
 const handleGetTemplateById = async (req, res) => {
     const { id } = req.params;
 
-    const template = await PollTemplate.findById(id).select('+fields -show');
+    const template = await PollTemplate.findById(id).select('-show');
     if (!template) return res.status(404).json({ message: "Template not found" });
 
     res.json({ template });

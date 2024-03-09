@@ -90,7 +90,7 @@ const handleLogin = async (req, res) => {
                     foundUser.refreshToken = refreshToken;
                 foundUser.resetPassToken = '';
                 await foundUser.save();
-                res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000, secure: true, sameSite: 'None' }); //secure: true, sameSite: 'None'
+                res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 * 7, secure: true, sameSite: 'Lax' }); //secure: true, sameSite: 'None'
                 const fullname = (foundUser.firstname === foundUser.lastname)
                     ? `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)}`
                     : `${foundUser.firstname.charAt(0).toUpperCase() + foundUser.firstname.slice(1)} ${foundUser.lastname.charAt(0).toUpperCase() + foundUser.lastname.slice(1)}`;
