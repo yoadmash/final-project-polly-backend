@@ -194,10 +194,10 @@ const handlePollDelete = async (req, res) => {
     const foundPoll = await Poll.findById(pollId);
     if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${pollId}` });
 
-    const foundUser = await User.findById(foundPoll.owner.id);
+    const foundUser = await User.findById(by_admin && adminUser.admin ? foundPoll.owner.id : req.user);
     if (!foundUser) return res.status(404).json({ message: 'User not found' });
 
-    if (foundPoll.owner.id !== foundUser.id && !by_admin) { // removes poll from answered or visited
+    if (foundPoll.owner.id !== req.user && !by_admin) { // removes poll from answered or visited
         const answered = foundUser.polls_answered.includes(pollId);
         const visited = foundUser.polls_visited.includes(pollId);
 
@@ -397,7 +397,7 @@ const handleAnswerPoll = async (req, res) => {
             }
         } else if (typeof answer.value === 'string') {
             try {
-                answer.value = JSON.parse(answer.value);
+                answer.value = String(JSON.parse(answer.value));
             } catch {
                 if (answer.value.length === 0) {
                     answer.value = null;
@@ -417,8 +417,10 @@ const handleAnswerPoll = async (req, res) => {
             throw new Error('Please answer atleast 1 question');
         }
 
-        foundUser.polls_answered.push(pollId);
-        foundUser.polls_visited = foundUser.polls_visited.filter(poll => poll !== pollId);
+        if(!foundPoll.settings.submitAnonymously) {
+            foundUser.polls_answered.push(pollId);
+            foundUser.polls_visited = foundUser.polls_visited.filter(poll => poll !== pollId);
+        }
 
         await foundUser.save();
 
