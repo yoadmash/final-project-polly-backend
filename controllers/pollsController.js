@@ -51,9 +51,9 @@ const handleEditTemplate = async (req, res) => {
     const { data } = req.body;
     if (!id || !data) return res.status(400).json({ message: 'Missing id or data' });
 
-    const template = await PollTemplate.findById(id).select('+fields -show');
-
+    
     try {
+        const template = await PollTemplate.findById(id).select('+fields');
         template.title = data.title;
         template.fields = data.fields;
         await template.save();
