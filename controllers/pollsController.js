@@ -397,7 +397,10 @@ const handleAnswerPoll = async (req, res) => {
             }
         } else if (typeof answer.value === 'string') {
             try {
-                answer.value = String(JSON.parse(answer.value));
+                answer.value = JSON.parse(answer.value);
+                if(typeof answer.value === 'number') {
+                    answer.value = String(answer.value);
+                }
             } catch {
                 if (answer.value.length === 0) {
                     answer.value = null;
