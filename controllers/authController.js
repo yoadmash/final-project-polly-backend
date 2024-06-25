@@ -73,6 +73,7 @@ const handleLogin = async (req, res) => {
     const foundUser = await User.findOne({ username: username }).select('+password');
     if (!foundUser) return res.status(401).json({ message: 'Username or password are incorrect' });
     if (!foundUser.active) return res.status(401).json({ message: `User '${foundUser.username}' is deactivated. To activate the user, please Sign Up with the same username and password` });
+    if (foundUser.registered_by_google) return res.status(401).json({ message: 'Please sign in with your Google account' });
 
     bcrypt.compare(password, foundUser.password, async (err, same) => {
         if (same) {
@@ -87,11 +88,10 @@ const handleLogin = async (req, res) => {
                     process.env.REFRESH_TOKEN_SECRET,
                     { expiresIn: '7d' }
                 );
-                foundUser.last_login = format(Date.now(), 'dd/MM/yyyy, HH:mm:ss'),
-                    foundUser.refreshToken = refreshToken;
+                foundUser.last_login = format(Date.now(), 'dd/MM/yyyy, HH:mm:ss');
+                foundUser.refreshToken = refreshToken;
                 foundUser.resetPassToken = '';
                 await foundUser.save();
-                // res.cookie('jwt', refreshToken, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 * 7, secure: true, sameSite: 'None', partitioned: true }); //secure: true, sameSite: 'None'
                 res.setHeader('Set-Cookie', cookie.serialize('jwt', refreshToken, {
                     path: '/',
                     httpOnly: true,
@@ -124,6 +124,80 @@ const handleLogin = async (req, res) => {
             }
         } else return res.status(401).json({ message: "Username or password are incorrect" });
     });
+}
+
+const handleGoogleAuth = async (req, res) => {
+    const { firstname, lastname, username, email } = req.body;
+    if (!firstname || !lastname || !username || !email) return res.status(400).json({ message: 'Missing firstname / lastname / username / email' });
+
+    let user = await User.findOne({ email });
+    if (user && !user.registered_by_google) return res.status(401).json({ message: 'Please sign in with your username and password' });
+
+    try {
+        if (!user) {
+            user = await User.create({
+                _id: uuid(),
+                firstname,
+                lastname,
+                username,
+                email,
+                password: await bcrypt.hash(username, 10),
+                resetPassToken: '',
+                registered_at: format(Date.now(), 'dd/MM/yyyy'),
+                last_login: format(Date.now(), 'dd/MM/yyyy, HH:mm:ss'),
+                registered_by_google: true,
+            });
+        }
+
+        const accessToken = jwt.sign(
+            { "id": user.id },
+            process.env.ACCESS_TOKEN_SECRET,
+            { expiresIn: '30m' }
+        );
+        const refreshToken = jwt.sign(
+            { "id": user.id },
+            process.env.REFRESH_TOKEN_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        user.refreshToken = refreshToken;
+        await user.save();
+
+        const fullname = (user.firstname === user.lastname)
+            ? `${user.firstname.charAt(0).toUpperCase() + user.firstname.slice(1)}`
+            : `${user.firstname.charAt(0).toUpperCase() + user.firstname.slice(1)} ${user.lastname.charAt(0).toUpperCase() + user.lastname.slice(1)}`;
+
+        res.setHeader('Set-Cookie', cookie.serialize('jwt', refreshToken, {
+            path: '/',
+            httpOnly: true,
+            maxAge: 24 * 60 * 60 * 7,
+            secure: true,
+            sameSite: 'None',
+            partitioned: true
+        }));
+
+        res.status(201).json({
+            message: `Registration Complete`, userData: {
+                userId: user.id,
+                fullname: fullname,
+                username: user.username,
+                accessToken: accessToken,
+                admin: false,
+                profile_pic_path: '',
+                polls_created: user.polls_created
+            }
+        });
+
+        logToDB({
+            user_id: user.id,
+            user_name: user.username,
+            log_message: 'user registered - by google',
+            log_type: 'auth'
+        }, false);
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
 }
 
 const handleLogout = async (req, res) => {
@@ -265,6 +339,7 @@ const handleChangePassword = async (req, res) => {
 export default {
     handleRegister,
     handleLogin,
+    handleGoogleAuth,
     handleLogout,
     handleRefreshToken,
     handleForgotPassword,

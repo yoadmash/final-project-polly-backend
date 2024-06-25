@@ -15,6 +15,7 @@ const regex = '^/'
 
 usersRouter.route(regex + 'auth/register').post(authController.handleRegister);
 usersRouter.route(regex + 'auth/login').post(authController.handleLogin);
+usersRouter.route(regex + 'auth/google').post(authController.handleGoogleAuth);
 usersRouter.route(regex + 'auth/refresh').get(authController.handleRefreshToken);
 usersRouter.route(regex + 'auth/logout').get(authController.handleLogout);
 usersRouter.route(regex + 'auth/reset-password').post(authController.handleForgotPassword);
