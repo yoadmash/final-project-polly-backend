@@ -77,6 +77,10 @@ const userSchema = new Schema({
     last_login: {
         type: String,
         required: false
+    },
+    registered_by_google: {
+        type: Boolean,
+        required: false,
     }
 }, {versionKey: false});
 
