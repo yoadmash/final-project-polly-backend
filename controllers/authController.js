@@ -247,13 +247,6 @@ const handleRefreshToken = async (req, res) => {
                     polls_created: foundUser.polls_created
                 }
             });
-
-            // logToDB({
-            //     user_id: foundUser.id,
-            //     user_name: foundUser.username,
-            //     log_type: 'auth',
-            //     log_message: 'new access token issued'
-            // }, false);
         }
     );
 }
@@ -263,6 +256,7 @@ const handleForgotPassword = async (req, res) => {
     const foundUser = await User.findOne({ email: emailAddress });
 
     if (!foundUser) return res.status(404).json({ message: 'User not found' });
+    if(foundUser.registered_by_google) return res.status(401).json({message: 'Unable to reset password because this user was signed up with Google'});
 
     let resetPassToken = ''
     try {
