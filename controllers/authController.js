@@ -182,7 +182,7 @@ const handleGoogleAuth = async (req, res) => {
                 fullname: fullname,
                 username: user.username,
                 accessToken: accessToken,
-                admin: false,
+                admin: user.admin,
                 profile_pic_path: '',
                 polls_created: user.polls_created
             }
