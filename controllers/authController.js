@@ -110,7 +110,8 @@ const handleLogin = async (req, res) => {
                         accessToken: accessToken,
                         admin: foundUser.admin,
                         profile_pic_path: foundUser.profile_pic_path,
-                        polls_created: foundUser.polls_created
+                        polls_created: foundUser.polls_created,
+                        registered_by_google: foundUser.registered_by_google,
                     }
                 });
                 logToDB({
@@ -132,6 +133,7 @@ const handleGoogleAuth = async (req, res) => {
 
     let user = await User.findOne({ email });
     if (user && !user.registered_by_google) return res.status(401).json({ message: 'Please sign in with your username and password' });
+    if(!user.active) return res.status(401).json({message: 'This user is deactivated'});
 
     try {
         if (!user) {
@@ -177,21 +179,22 @@ const handleGoogleAuth = async (req, res) => {
         }));
 
         res.status(201).json({
-            message: `Registration Complete`, userData: {
+            message: `Auth Complete`, userData: {
                 userId: user.id,
                 fullname: fullname,
                 username: user.username,
                 accessToken: accessToken,
                 admin: user.admin,
                 profile_pic_path: '',
-                polls_created: user.polls_created
+                polls_created: user.polls_created,
+                registered_by_google: user.registered_by_google,
             }
         });
 
         logToDB({
             user_id: user.id,
             user_name: user.username,
-            log_message: 'user registered - by google',
+            log_message: 'by google',
             log_type: 'auth'
         }, false);
 
@@ -244,7 +247,8 @@ const handleRefreshToken = async (req, res) => {
                     accessToken: accessToken,
                     admin: foundUser.admin,
                     profile_pic_path: foundUser.profile_pic_path,
-                    polls_created: foundUser.polls_created
+                    polls_created: foundUser.polls_created,
+                    registered_by_google: foundUser.registered_by_google,
                 }
             });
         }
