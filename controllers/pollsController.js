@@ -197,32 +197,32 @@ const handlePollDelete = async (req, res) => {
     const foundUser = await User.findById(by_admin && adminUser.admin ? foundPoll.owner.id : req.user);
     if (!foundUser) return res.status(404).json({ message: 'User not found' });
 
-    if (foundPoll.owner.id !== req.user && !by_admin) { // removes poll from answered or visited
-        const answered = foundUser.polls_answered.includes(pollId);
-        const visited = foundUser.polls_visited.includes(pollId);
+    // if (foundPoll.owner.id !== req.user && !by_admin) { // removes poll from answered or visited
+    //     const answered = foundUser.polls_answered.includes(pollId);
+    //     const visited = foundUser.polls_visited.includes(pollId);
 
-        if (answered) {
-            foundUser.polls_answered = foundUser.polls_answered.filter(poll => poll !== pollId);
-            const answer_exists = foundPoll.answers.find(answer => answer.answered_by.user_id === foundUser.id);
-            if (answer_exists && foundPoll.settings.usersCanDeleteAnswer) { // removes the answer from the poll itself
-                foundPoll.answers = foundPoll.answers.filter(answer => answer.answered_by.user_id !== foundUser.id);
-                await foundPoll.save();
-                logToDB({
-                    poll_id: foundPoll.id,
-                    poll_title: foundPoll.title,
-                    log_message: `${foundUser.username} deleted his answer`,
-                    log_type: 'polls'
-                }, false);
-            }
-        }
+    //     if (answered) {
+    //         foundUser.polls_answered = foundUser.polls_answered.filter(poll => poll !== pollId);
+    //         const answer_exists = foundPoll.answers.find(answer => answer.answered_by.user_id === foundUser.id);
+    //         if (answer_exists && foundPoll.settings.usersCanDeleteAnswer) { // removes the answer from the poll itself
+    //             foundPoll.answers = foundPoll.answers.filter(answer => answer.answered_by.user_id !== foundUser.id);
+    //             await foundPoll.save();
+    //             logToDB({
+    //                 poll_id: foundPoll.id,
+    //                 poll_title: foundPoll.title,
+    //                 log_message: `${foundUser.username} deleted his answer`,
+    //                 log_type: 'polls'
+    //             }, false);
+    //         }
+    //     }
 
-        if (visited) {
-            foundUser.polls_visited = foundUser.polls_visited.filter(poll => poll !== pollId);
-        }
+    //     if (visited) {
+    //         foundUser.polls_visited = foundUser.polls_visited.filter(poll => poll !== pollId);
+    //     }
 
-        await foundUser.save();
-        return res.sendStatus(200);
-    }
+    //     await foundUser.save();
+    //     return res.sendStatus(200);
+    // }
 
     if (foundPoll.image_path?.length > 0 && foundPoll.image_uuid?.length > 0) {
         try {
@@ -257,8 +257,8 @@ const handlePollDelete = async (req, res) => {
         usersAnswered.forEach(async (user) => {
             const foundUserAnswered = await User.findById(user.user_id);
             if (foundUserAnswered) {
-                const updatedPollsAnswerd = foundUserAnswered.polls_answered.filter(poll => poll !== pollId);
-                foundUserAnswered.polls_answered = updatedPollsAnswerd;
+                const updatedPollsAnswered = foundUserAnswered.polls_answered.filter(poll => poll !== pollId);
+                foundUserAnswered.polls_answered = updatedPollsAnswered;
                 try {
                     await foundUserAnswered.save();
                 } catch (err) {
@@ -459,7 +459,9 @@ const handleGetPollAnswers = async (req, res) => {
     const userAnswers = foundPoll.answers?.find(answer => answer.answered_by.user_id === req.user)?.answers;
     if (!userAnswers) return res.sendStatus(204);
 
-    res.json({ userAnswers });
+    const userInfo = foundPoll.answers.find(answer => answer.answered_by.user_id === req.user).answered_by;
+
+    res.json({ userAnswers, userInfo });
 }
 
 const handleClearPollAnswers = async (req, res) => {
