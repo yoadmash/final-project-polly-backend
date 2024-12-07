@@ -133,7 +133,7 @@ const handleGoogleAuth = async (req, res) => {
 
     let user = await User.findOne({ email });
     if (user && !user.registered_by_google) return res.status(401).json({ message: 'Please sign in with your username and password' });
-    if(!user.active) return res.status(401).json({message: 'This user is deactivated'});
+    if(user && !user.active) return res.status(401).json({message: 'This user is deactivated'});
 
     try {
         if (!user) {
