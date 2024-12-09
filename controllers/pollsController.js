@@ -51,7 +51,6 @@ const handleEditTemplate = async (req, res) => {
     const { data } = req.body;
     if (!id || !data) return res.status(400).json({ message: 'Missing id or data' });
 
-    
     try {
         const template = await PollTemplate.findById(id).select('+fields');
         template.title = data.title;
@@ -189,7 +188,7 @@ const handlePollDelete = async (req, res) => {
     if (!pollId) return res.status(400).json({ message: 'Missing poll id' });
 
     const adminUser = await User.findById(req.user);
-    if(by_admin && !adminUser.admin) return res.status(404).json({ message: 'You are not an admin' });
+    if (by_admin && !adminUser.admin) return res.status(404).json({ message: 'You are not an admin' });
 
     const foundPoll = await Poll.findById(pollId);
     if (!foundPoll) return res.status(404).json({ message: `No poll matches id: ${pollId}` });
@@ -197,32 +196,32 @@ const handlePollDelete = async (req, res) => {
     const foundUser = await User.findById(by_admin && adminUser.admin ? foundPoll.owner.id : req.user);
     if (!foundUser) return res.status(404).json({ message: 'User not found' });
 
-    // if (foundPoll.owner.id !== req.user && !by_admin) { // removes poll from answered or visited
-    //     const answered = foundUser.polls_answered.includes(pollId);
-    //     const visited = foundUser.polls_visited.includes(pollId);
+    if (foundPoll.owner.id !== req.user && !by_admin) { // removes poll from answered or visited
+        const answered = foundUser.polls_answered.includes(pollId);
+        const visited = foundUser.polls_visited.includes(pollId);
 
-    //     if (answered) {
-    //         foundUser.polls_answered = foundUser.polls_answered.filter(poll => poll !== pollId);
-    //         const answer_exists = foundPoll.answers.find(answer => answer.answered_by.user_id === foundUser.id);
-    //         if (answer_exists && foundPoll.settings.usersCanDeleteAnswer) { // removes the answer from the poll itself
-    //             foundPoll.answers = foundPoll.answers.filter(answer => answer.answered_by.user_id !== foundUser.id);
-    //             await foundPoll.save();
-    //             logToDB({
-    //                 poll_id: foundPoll.id,
-    //                 poll_title: foundPoll.title,
-    //                 log_message: `${foundUser.username} deleted his answer`,
-    //                 log_type: 'polls'
-    //             }, false);
-    //         }
-    //     }
+        if (answered) {
+            foundUser.polls_answered = foundUser.polls_answered.filter(poll => poll !== pollId);
+            // const answer_exists = foundPoll.answers.find(answer => answer.answered_by.user_id === foundUser.id);
+            // if (answer_exists && foundPoll.settings.usersCanDeleteAnswer) { // removes the answer from the poll itself
+            //     foundPoll.answers = foundPoll.answers.filter(answer => answer.answered_by.user_id !== foundUser.id);
+            //     await foundPoll.save();
+            //     logToDB({
+            //         poll_id: foundPoll.id,
+            //         poll_title: foundPoll.title,
+            //         log_message: `${foundUser.username} deleted his answer`,
+            //         log_type: 'polls'
+            //     }, false);
+            // }
+        }
 
-    //     if (visited) {
-    //         foundUser.polls_visited = foundUser.polls_visited.filter(poll => poll !== pollId);
-    //     }
+        if (visited) {
+            foundUser.polls_visited = foundUser.polls_visited.filter(poll => poll !== pollId);
+        }
 
-    //     await foundUser.save();
-    //     return res.sendStatus(200);
-    // }
+        await foundUser.save();
+        return res.sendStatus(200);
+    }
 
     if (foundPoll.image_path?.length > 0 && foundPoll.image_uuid?.length > 0) {
         try {
@@ -398,7 +397,7 @@ const handleAnswerPoll = async (req, res) => {
         } else if (typeof answer.value === 'string') {
             try {
                 answer.value = JSON.parse(answer.value);
-                if(typeof answer.value === 'number') {
+                if (typeof answer.value === 'number') {
                     answer.value = String(answer.value);
                 }
             } catch {
@@ -420,7 +419,7 @@ const handleAnswerPoll = async (req, res) => {
             throw new Error('Please answer atleast 1 question');
         }
 
-        if(!foundPoll.settings.submitAnonymously) {
+        if (!foundPoll.settings.submitAnonymously) {
             foundUser.polls_answered.push(pollId);
             foundUser.polls_visited = foundUser.polls_visited.filter(poll => poll !== pollId);
         }
@@ -443,8 +442,26 @@ const handleSearchPolls = async (req, res) => {
     const { searchValue } = req.body;
     if (!searchValue) return res.status(204).json({ message: 'Missing Title or ID' });
 
+    const foundUserPolls = await User.findById(req.user).select('-_id polls_created polls_answered polls_visited');
+    if (!foundUserPolls) return res.status(404).json({ message: 'User not found' });
+
+    const pollsIdsCombined = Array.from(
+        new Set([
+            ...foundUserPolls?.polls_created,
+            ...foundUserPolls?.polls_answered,
+            ...foundUserPolls?.polls_visited
+        ])
+    );
+
     const select = 'owner.username title image_path creation_date creation_time';
-    const searchResults = await Poll.find({ title: { $regex: searchValue, $options: 'i' } }).select(select);
+    const searchResults = await Poll.find({
+        "_id": {
+            $in: pollsIdsCombined
+        },
+        "title": {
+            $regex: searchValue, $options: 'i'
+        },
+    }).select(select);
 
     res.json({ searchResults });
 }
